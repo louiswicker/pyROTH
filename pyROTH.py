@@ -65,7 +65,7 @@ _radar_parameters = {
                     }
         
 # This flag adds an k/j/i index to the DART file, which is the index locations of the gridded data
-_write_grid_indices = True
+_write_grid_indices = False
 
 # True here uses the basemap county database to plot the county outlines.
 _plot_counties = True
@@ -339,6 +339,9 @@ def write_DART_ascii(obs, fsuffix=None, obs_error=None, zero_dbz_obtype=True):
   kind       = ObType_LookUp(obs.field.upper())
   truth      = 1.0  # dummy variable
 
+# Fix the negative lons...
+  lons       = np.where(lons > 0.0, lons, lons+(2.0*np.pi))
+
 # platform information
 
   if kind == ObType_LookUp("VR"):
@@ -357,14 +360,15 @@ def write_DART_ascii(obs, fsuffix=None, obs_error=None, zero_dbz_obtype=True):
   
 # Print the number of value gates
 
-  print("\n Number of good observations:  %d" % np.sum(data.mask[:]==False))
+  data_length = np.sum(data.mask[:]==False)
+  print("\n Number of good observations:  %d" % data_length)
   
 # Create a multidimension iterator to move through 3D array creating obs
  
   it = np.nditer(data, flags=['multi_index'])
   nobs = 0
   nobs_clearair = 0
-  
+
   while not it.finished:
       k = it.multi_index[0]
       j = it.multi_index[1]
@@ -378,17 +382,17 @@ def write_DART_ascii(obs, fsuffix=None, obs_error=None, zero_dbz_obtype=True):
           if _write_grid_indices:
               fi.write(" OBS            %d     %d     %d    %d\n" % (nobs,k,j,i) )
           else:
-              fi.write(" OBS            %d     %d     %d    %d\n" % (nobs,k,j,i) )
+              fi.write(" OBS            %d\n" % (nobs) )
               
           fi.write("   %20.14f\n" % data[k,j,i]  )
           fi.write("   %20.14f\n" % truth )
             
           if nobs == 1: 
               fi.write(" %d %d %d\n" % (-1, nobs+1, -1) ) # First obs.
-          elif nobs == data.size:
+          elif nobs == data_length:
               fi.write(" %d %d %d\n" % (nobs-1, -1, -1) ) # Last obs.
           else:
-              fi.write(" %d %d %d\n" % (nobs-1, -1, -1) ) 
+              fi.write(" %d %d %d\n" % (nobs-1, nobs+1, -1) ) 
       
           fi.write("obdef\n")
           fi.write("loc3d\n")
