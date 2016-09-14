@@ -38,6 +38,12 @@ import pylab as P
 from mpl_toolkits.basemap import Basemap
 from pyart.graph import cm
 
+# This flag adds an k/j/i index to the DART file, which is the index locations of the gridded data
+_write_grid_indices = False
+
+# True here uses the basemap county database to plot the county outlines.
+_plot_counties = True
+
 # Parameter dict for Gridding
 _grid_dict = {
               'grid_spacing_xy' : 6000.,   # meters
@@ -64,12 +70,6 @@ _radar_parameters = {
                      'max_range': 150000.,
                     }
         
-# This flag adds an k/j/i index to the DART file, which is the index locations of the gridded data
-_write_grid_indices = False
-
-# True here uses the basemap county database to plot the county outlines.
-_plot_counties = True
-
 #=========================================================================================
 # Class variable used as container
 
@@ -397,9 +397,8 @@ def write_DART_ascii(obs, fsuffix=None, obs_error=None, zero_dbz_obtype=True):
           fi.write("obdef\n")
           fi.write("loc3d\n")
 
-          fi.write("    %20.14f          %20.14f          %20.14f\n" % (lons[j,i], lats[j,i], hgts[k,j,i]))
-      
-          fi.write("     %d     \n" % vert_coord )
+          fi.write("    %20.14f          %20.14f          %20.14f     %d\n" % 
+                  (lons[j,i], lats[j,i], hgts[k,j,i], vert_coord))
       
           fi.write("kind\n")
           
@@ -429,8 +428,10 @@ def write_DART_ascii(obs, fsuffix=None, obs_error=None, zero_dbz_obtype=True):
               fi.write("platform\n")
               fi.write("loc3d\n")
 
-              fi.write("    %20.14f          %20.14f        %20.14f\n" % (platform_lon, platform_lat, platform_hgt) )
-              fi.write("     %d     \n" % platform_vert_coord )
+              if platform_lon < 0.0:  platform_lon = platform_lon+2.0*np.pi
+
+              fi.write("    %20.14f          %20.14f        %20.14f    %d\n" % 
+                      (platform_lon, platform_lat, platform_hgt, platform_vert_coord) )
           
               fi.write("dir3d\n")
           
