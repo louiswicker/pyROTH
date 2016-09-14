@@ -26,7 +26,7 @@ from mpl_toolkits.axes_grid.inset_locator import inset_axes
 _debug               = True
 _verbose             = True
 _missing             = -999.
-version_string       = "pyDART_file_version_2.3"
+version_string       = "pyDART_file_version_3.0"
 checked_file_version = False
 
 #=========================================================================================
@@ -412,9 +412,9 @@ def open_pyDart_file(filename, return_root=False, verbose = None, append=False):
 # Open DART PyTables file
     
     if append:
-        h5file = openFile(filename, mode = "a")
+        h5file = open_file(filename, mode = "a")
     else:
-        h5file = openFile(filename, mode = "r")
+        h5file = open_file(filename, mode = "r")
     
     chk_pyDart_version(h5file,verbose)
     
@@ -455,8 +455,8 @@ def ObType_LookUp(name,DART_name=False,Print_Table=False):
 
 #                      user's observation type            kind   DART official name
 
-      Look_Up_Table={ "DOPPLER_VELOCITY":                 [11,   "DOPPLER_RADAR_VELOCITY"] ,
-                      "DOPPLER_RADIAL_VELOCITY":          [11,   "DOPPLER_RADAR_VELOCITY"] ,
+      Look_Up_Table={ "DOPPLER_VELOCITY":                 [11,   "DOPPLER_RADIAL_VELOCITY"] ,
+                      "DOPPLER_RADIAL_VELOCITY":          [11,   "DOPPLER_RADIAL_VELOCITY"] ,
                       "REFLECTIVITY":                     [12,   "RADAR_REFLECTIVITY"],
                       "RADAR_REFLECTIVITY":               [12,   "RADAR_REFLECTIVITY"],
                       "RADAR_CLEARAIR_REFLECTIVITY":      [13,   "RADAR_CLEARAIR_REFLECTIVITY"],  
@@ -468,7 +468,7 @@ def ObType_LookUp(name,DART_name=False,Print_Table=False):
                       "METAR_TEMPERATURE_2_METER":        [4,    "METAR_TEMPERATURE_2_METER"],
                       "METAR_DEWPOINT_2_METER":           [9,    "METAR_DEWPOINT_2_METER"],
                       "METAR_SPECIFIC_HUMIDITY_2_METER":  [5,    "METAR_SPECIFIC_HUMIDITY_2_METER"],
-                      "VR":                               [11,   "DOPPLER_RADAR_VELOCITY"],
+                      "VR":                               [11,   "DOPPLER_RADIAL_VELOCITY"],
                       "DBZ":                              [12,   "RADAR_REFLECTIVITY"],
                       "0DBZ":                             [13,   "RADAR_CLEARAIR_REFLECTIVITY"],
                       "ZDR":                              [300,  "DIFFERENTIAL_REFLECTIVITY"],
@@ -523,13 +523,13 @@ def mergeTables(table_new, tables, addindex=True):
     if len(tables) == 1 or type(tables) == type('str'):
         print "Only one table for merging supplied, simply doing a copy..."
         h5file1, table1 = open_pyDart_file(tables)
-        h5file1.copyFile(table_new, overwrite=True)
+        h5file1.copy_file(table_new, overwrite=True)
         h5file1.close()
         print "Finished copying %s into %s" % (tables, table_new)
     else:
         h5file1, table1 = open_pyDart_file(tables[0])
         print "Creating new table to copy into...."
-        h5file1.copyFile(table_new, overwrite=True)
+        h5file1.copy_file(table_new, overwrite=True)
         print "Finished copying %s into %s" % (tables[0], table_new)
 
         h5file1.close()   
@@ -548,8 +548,8 @@ def mergeTables(table_new, tables, addindex=True):
         print "Finished appending all table rows...."
         print "New table:    ", table1
         
-        indexrows = table1.cols.utime.createIndex()
-        indexrows = table1.cols.kind.createIndex()
+        indexrows = table1.cols.utime.create_index()
+        indexrows = table1.cols.kind.create_index()
 
         h5file1.close()
 
@@ -663,28 +663,28 @@ class pyDART():
                 print "PyDART SEARCH CONDITION IS:  ", search_string
                 print
             
-            self.index = table.getWhereList(search_string)    # Do the search
+            self.index = table.get_where_list(search_string)    # Do the search
             if len(self.index) == 0:  self.index = None
             
             if tablereturn != None:
 
                 # make a blank table to put results of search in
                 filter_spec = Filters(complevel=5, complib="zlib", shuffle=1, fletcher32=0)
-                h5file_sub = openFile(tablereturn, mode = "w", title = version_string, filters=filter_spec)
-                group_ob_kinds = h5file_sub.createGroup("/", 'obs', 'Obs for DART file')
+                h5file_sub = open_file(tablereturn, mode = "w", title = version_string, filters=filter_spec)
+                group_ob_kinds = h5file_sub.create_group("/", 'obs', 'Obs for DART file')
         
-                table_ob_kinds = h5file_sub.createTable(group_ob_kinds, 'kinds', DART_ob_kinds, 'Observation Descriptions')
-                group_header = h5file_sub.createGroup("/", 'header', 'Header Information for DART file')
-                table_header = h5file_sub.createTable(group_header, 'attributes', DART_header, 'Attributes of the observational file')
+                table_ob_kinds = h5file_sub.create_table(group_ob_kinds, 'kinds', DART_ob_kinds, 'Observation Descriptions')
+                group_header = h5file_sub.create_group("/", 'header', 'Header Information for DART file')
+                table_header = h5file_sub.create_table(group_header, 'attributes', DART_header, 'Attributes of the observational file')
         
                 root   = h5file_sub.root
                 group_obs    = root.obs
                 group_header = root.header
         
-                table_obs = h5file_sub.createTable(group_obs, 'observations', DART_obs, 'Observations from DART file')
+                table_obs = h5file_sub.create_table(group_obs, 'observations', DART_obs, 'Observations from DART file')
                 
                 # do search and put results in table
-                table.whereAppend(table_obs, search_string)
+                table.append_where(table_obs, search_string)
                 
                 table_obs.flush()
                 
@@ -965,9 +965,9 @@ class pyDART():
         
         if self.debug:  start = time.clock()
         
-        data = table.readCoordinates(self.index)
+        data = table.read_coordinates(self.index)
 
-        if self.debug:  print "pyDart.get_data  Execution time for readCoordinates method:  ", time.clock() - start
+        if self.debug:  print "pyDart.get_data  Execution time for read_coordinates method:  ", time.clock() - start
          
         h5file.close()
         
@@ -1004,7 +1004,7 @@ class pyDART():
                 var_index = variable
             
             if self.index == None:
-                table.getWhereList("kind == var_index")
+                table.get_where_list("kind == var_index")
             
             if len(self.index) != 0:
                 if self.verbose: print "Number of observations:  ",len(self.index)
@@ -1077,7 +1077,7 @@ class pyDART():
             return
             
         if self.index == None:
-            table.getWhereList("kind == var_index")
+            table.get_where_list("kind == var_index")
         
         if len(self.index) != 0:
             if self.verbose: print "Number of observations:  ", len(self.index)
@@ -1138,13 +1138,13 @@ class pyDART():
         
         filter_spec = Filters(complevel=5, complib="zlib", shuffle=1, fletcher32=0)
         
-        h5file = openFile(self.hdf5, mode = "w", title = version_string, filters=filter_spec)
+        h5file = open_file(self.hdf5, mode = "w", title = version_string, filters=filter_spec)
         
-        group_ob_kinds = h5file.createGroup("/", 'obs', 'Obs for DART file')
+        group_ob_kinds = h5file.create_group("/", 'obs', 'Obs for DART file')
 
 # Create group for observation descriptions
         
-        table_ob_kinds = h5file.createTable(group_ob_kinds, 'kinds', DART_ob_kinds, 'Observation Descriptions')
+        table_ob_kinds = h5file.create_table(group_ob_kinds, 'kinds', DART_ob_kinds, 'Observation Descriptions')
         
         fi = open(self.ascii, 'r')
         fi.readline()                       # Read(str) "obs_sequence"
@@ -1172,8 +1172,8 @@ class pyDART():
 
 # Create group for misc file header information
         
-        group_header = h5file.createGroup("/", 'header', 'Header Information for DART file')
-        table_header = h5file.createTable(group_header, 'attributes', DART_header, 'Attributes of the observational file')
+        group_header = h5file.create_group("/", 'header', 'Header Information for DART file')
+        table_header = h5file.create_table(group_header, 'attributes', DART_header, 'Attributes of the observational file')
         
         stuff      = fi.readline()          # Read(str) "num_copies" line
         stuff      = stuff.split()
@@ -1239,7 +1239,7 @@ class pyDART():
 
 # create table that will hold the observation information
         
-        table_obs = h5file.createTable(group_obs, 'observations', DART_obs, 'Observations from DART file')
+        table_obs = h5file.create_table(group_obs, 'observations', DART_obs, 'Observations from DART file')
         
         row = table_obs.row
 
@@ -1431,12 +1431,12 @@ class pyDART():
         
         filter_spec = Filters(complevel=5, complib="zlib", shuffle=1, fletcher32=0)
         
-        h5file = openFile(self.hdf5, mode = "w", title = version_string, filters=filter_spec)
-        group_ob_kinds = h5file.createGroup("/", 'obs', 'Obs for DART file')
+        h5file = open_file(self.hdf5, mode = "w", title = version_string, filters=filter_spec)
+        group_ob_kinds = h5file.create_group("/", 'obs', 'Obs for DART file')
 
 # Create group for observation descriptions
         
-        table_ob_kinds = h5file.createTable(group_ob_kinds, 'kinds', DART_ob_kinds, 'Observation Descriptions')
+        table_ob_kinds = h5file.create_table(group_ob_kinds, 'kinds', DART_ob_kinds, 'Observation Descriptions')
         
         row = table_ob_kinds.row
         
@@ -1451,8 +1451,8 @@ class pyDART():
 
 # Create group for misc file header information
         
-        group_header = h5file.createGroup("/", 'header', 'Header Information for DART file')
-        table_header = h5file.createTable(group_header, 'attributes', DART_header, 'Attributes of the observational file')
+        group_header = h5file.create_group("/", 'header', 'Header Information for DART file')
+        table_header = h5file.create_table(group_header, 'attributes', DART_header, 'Attributes of the observational file')
         
         print table_header
         row = table_header.row
@@ -1482,7 +1482,7 @@ class pyDART():
 
 # create table that will hold the observation information
         
-        table_obs = h5file.createTable(group_obs, 'observations', DART_obs, 'Observations from DART file')
+        table_obs = h5file.create_table(group_obs, 'observations', DART_obs, 'Observations from DART file')
         
         row = table_obs.row
 
@@ -1632,11 +1632,11 @@ class pyDART():
         
         filter_spec = Filters(complevel=5, complib="zlib", shuffle=1, fletcher32=0)
         
-        h5file = openFile(self.hdf5, mode = "w", title = version_string, filters=filter_spec)
+        h5file = open_file(self.hdf5, mode = "w", title = version_string, filters=filter_spec)
         
-        group_ob_kinds = h5file.createGroup("/", 'obs', 'Obs for DART file')
+        group_ob_kinds = h5file.create_group("/", 'obs', 'Obs for DART file')
                 
-        group_header = h5file.createGroup("/", 'header', 'Header Information for DART file')
+        group_header = h5file.create_group("/", 'header', 'Header Information for DART file')
 
 # Find the obs group to create table in
         
@@ -1646,7 +1646,7 @@ class pyDART():
 
 # create table that will hold the observation information
         
-        table_obs = h5file.createTable(group_obs, 'observations', DART_obs, 'Observations from DART file')
+        table_obs = h5file.create_table(group_obs, 'observations', DART_obs, 'Observations from DART file')
     
         row = table_obs.row
         
@@ -1818,7 +1818,7 @@ class pyDART():
         
 # Create header information for the table......
         
-        table_ob_kinds = h5file.createTable(group_ob_kinds, 'kinds', DART_ob_kinds, 'Observation Descriptions')
+        table_ob_kinds = h5file.create_table(group_ob_kinds, 'kinds', DART_ob_kinds, 'Observation Descriptions')
         row = table_ob_kinds.row
         
         if count_dbz > 0:
@@ -1837,7 +1837,7 @@ class pyDART():
 
 # Create file header information
 
-        table_header = h5file.createTable(group_header, 'attributes', DART_header, 'Attributes of the observational file')
+        table_header = h5file.create_table(group_header, 'attributes', DART_header, 'Attributes of the observational file')
         
         row = table_header.row
                     
@@ -1955,28 +1955,26 @@ class pyDART():
             if self.debug:  print 'pyDart/hdf2ascii:  Written observational types:  ', r
         
         attr = h5file.root.header.attributes
+
         nobs = attr.col('num_obs')[0]
 
-        fi.write("  num_copies:            %d  num_qc:            %d\n" % (attr.col('num_copies')[0], 0 ))
+        fi.write("  num_copies:            %d  num_qc:            %d\n" % (attr.col('num_copies')[0], 1 ))
         
         if self.index != None:
             fi.write(" num_obs:       %d  max_num_obs:       %d\n" % (len(self.index), len(self.index)) )
-            
-            fi.write("observations\n")
-            if attr.col('num_copies')[0] == 2:
-                fi.write("truth\n")
-                
-            fi.write("  first:            %d  last:       %d\n" % (1, len(self.index)) )
-            if self.debug:
-                print "pyDart/hdf2ascii:  Max number of observations:    ", len(self.index)
-        
         else:
             fi.write(" num_obs:       %d  max_num_obs:       %d\n" % (attr.col('num_obs')[0], attr.col('max_num_obs')[0]))
             
-            fi.write("observations\n")
-            if attr.col('num_copies')[0] == 2:
-                fi.write("truth\n")
+        fi.write("observations\n")
+        if attr.col('num_copies')[0] == 2:
+            fi.write("truth\n")
+        fi.write("QC obs\n")
                 
+        if self.index != None:
+            fi.write(" num_obs:       %d  max_num_obs:       %d\n" % (len(self.index), len(self.index)) )
+            if self.debug:
+                print "pyDart/hdf2ascii:  Max number of observations:    ", len(self.index)
+        else:
             fi.write("  first:            %d  last:       %d\n" % (attr.col('first')[0], attr.col('last')[0]))
             if self.debug:
                 print "pyDart/hdf2ascii:  Max number of observations:    ", attr.col('max_num_obs')[0]
@@ -2001,6 +1999,8 @@ class pyDART():
             
             if attr.col('num_copies')[0] == 2:
                 fi.write("   %20.14f\n" % row["truth"]  )
+
+            fi.write("   %20.14f\n" % 1.0 )    # dummy QC flag
             
 # Code (from RLT) to output correct index number for each ob in the output DART file
 
@@ -2013,10 +2013,14 @@ class pyDART():
             
             fi.write("obdef\n")
             fi.write("loc3d\n")
+ 
+            if row["lon"] < 0.:
+                ob_lon = row["lon"] + 360.
+            else:
+                ob_lon = row["lon"] 
             
-            fi.write("    %20.14f          %20.14f          %20.14f\n" % (N.radians(row["lon"]), N.radians(row["lat"]), row["height"]) )
-            
-            fi.write("     %d     \n" % row["vert_coord"] )
+            fi.write("    %20.14f          %20.14f          %20.14f     %d\n" % 
+                    (N.radians(ob_lon), N.radians(row["lat"]), row["height"], row["vert_coord"]) )
             
             fi.write("kind\n")
             
@@ -2035,10 +2039,15 @@ class pyDART():
                 fi.write("platform\n")
                 fi.write("loc3d\n")
 
-                platform_lat, platform_lon = N.radians(row["platform_lat"]), N.radians(row["platform_lon"])
+                if row["platform_lon"] < 0.:
+                    plat_lon = row["platform_lon"] + 360.
+                else:
+                    plat_lon = row["platform_lon"] 
+
+                platform_lat, platform_lon = N.radians(row["platform_lat"]), N.radians(plat_lon)
                 
-                fi.write("    %20.14f          %20.14f        %20.14f\n" % (platform_lon, platform_lat, row["platform_height"]) )
-                fi.write("     %d     \n" % row["platform_vert_coord"] )
+                fi.write("    %20.14f          %20.14f        %20.14f    %d\n" %
+                        (platform_lon, platform_lat, row["platform_height"], row["platform_vert_coord"]) )
                 
                 fi.write("dir3d\n")
                 
