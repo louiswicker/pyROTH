@@ -493,7 +493,10 @@ def ObType_LookUp(name,DART_name=False,Print_Table=False):
                       "LAND_SFC_TEMPERATURE":             [25,   "LAND_SFC_TEMPERATURE"],
                       "LAND_SFC_U_WIND_COMPONENT":        [23,   "LAND_SFC_U_WIND_COMPONENT"],
                       "LAND_SFC_V_WIND_COMPONENT":        [24,   "LAND_SFC_V_WIND_COMPONENT"],
-                      "GOES_CWP_PATH":                    [80,   "GOES_CWP_PATH"]
+                      "GOES_CWP_PATH":                    [80,   "GOES_CWP_PATH"],
+                      "GOES_LWP_PATH":                    [119,   "GOES_LWP_PATH"],
+                      "GOES_IWP_PATH":                    [120,   "GOES_IWP_PATH"],
+                      "GOES_CWP_ZERO":                    [121,   "GOES_IWP_ZERO"]
                     }
       
       if Print_Table:
@@ -518,6 +521,11 @@ def ObType_LookUp(name,DART_name=False,Print_Table=False):
 def mergeTables(table_new, tables, addindex=True):
 
     print "mergeTable called:  New table:  ",table_new
+
+    if len(tables) == 2 and tables[0] == "D":
+        tables = glob.glob("%s/*.h5" % tables[1])
+        print tables
+
     print "mergeTable called:  Reading from:  ",tables, len(list(tables))
 
     if len(tables) == 1 or type(tables) == type('str'):
@@ -1267,7 +1275,7 @@ class pyDART():
                     sys.exit(-1)
             
             stuff            = fi.readline()
-            stuff            = stuff.split()
+            stuff            = stuff.replace(","," ").split()
             row["previous"]  = long(stuff[0])
             row["next"]      = long(stuff[1])
             row["cov_group"] = long(stuff[2])
@@ -1294,13 +1302,22 @@ class pyDART():
             
 # Check to see if this GEOS cloud pressure observation
             
-            if row["kind"] == ObType_LookUp("GOES_CWP_PATH"):
+            if (row["kind"] == ObType_LookUp("GOES_CWP_PATH") or 
+                row["kind"] == ObType_LookUp("GOES_IWP_PATH") or 
+                row["kind"] == ObType_LookUp("GOES_LWP_PATH") or 
+                row["kind"] == ObType_LookUp("GOES_CWP_ZERO")):
                 stuff = fi.readline()
-                stuff = stuff.split()
-                row["satellite"][0] = N.rad2deg(read_double_precision_string(stuff[0]))
-                row["satellite"][1] = N.rad2deg(read_double_precision_string(stuff[1]))
-                stuff = fi.readline().split()
-                row["satellite"][2] = N.float(stuff[0])
+                if stuff.find("2*"): 
+                    row["satellite"][0] = -990.
+                    row["satellite"][1] = -990.
+                    stuff = fi.readline().split()
+                    row["satellite"][2] = N.float(stuff[0])
+                else:
+                    stuff = stuff.split()
+                    row["satellite"][0] = N.rad2deg(read_double_precision_string(stuff[0]))
+                    row["satellite"][1] = N.rad2deg(read_double_precision_string(stuff[1]))
+                    stuff = fi.readline().split()
+                    row["satellite"][2] = N.float(stuff[0])
 
 # Since pyDart has "standard" integer IDs for observation types, we need to "reset" the "kind" integer
             
@@ -1333,6 +1350,7 @@ class pyDART():
                 fi.readline()
                 
                 stuff                    = fi.readline()
+                stuff                    = stuff.replace(","," ")                 
                 stuff                    = stuff.split()
                 
                 row['platform_dir1']     = read_double_precision_string(stuff[0])
@@ -2028,7 +2046,11 @@ class pyDART():
 
 # If this GEOS cloud pressure observation, write out extra information (NOTE - NOT TESTED FOR HDF2ASCII LJW 04/13/15)
 
-            if row["kind"] == ObType_LookUp("GOES_CWP_PATH"):
+            if (row["kind"] == ObType_LookUp("GOES_CWP_PATH") or 
+                row["kind"] == ObType_LookUp("GOES_IWP_PATH") or 
+                row["kind"] == ObType_LookUp("GOES_LWP_PATH") or 
+                row["kind"] == ObType_LookUp("GOES_CWP_ZERO")):
+
                 fi.write("    %20.14f          %20.14f  \n" % (row["satellite"][0], row["satellite"][1]) )
                 fi.write("    %20.14f  \n" % (row["satellite"][2]) )
 
@@ -2277,7 +2299,9 @@ def main(argv=None):
     parser.add_option(      "--lat_box",     dest="lat_box",   default=None,  type = "float",  nargs=2, help = "Search for MRMS within these lat limits. Usage:  --lat_box lat_south lat_north")
     parser.add_option(      "--lon_box",     dest="lon_box",   default=None,  type = "float",  nargs=2, help = "Search for MRMS within these lon limits. Usage:  --lon_box lon_west lon_east")
     parser.add_option(      "--obserror",    dest="obserror",  default=None,  type = "string", nargs=2, action="append", help = "Change the stored standard deviation of a observational type. Usage: --obserror DBZ 3.0")   
-    parser.add_option(      "--merge",       dest="merge",     default=None,  type = "string", nargs=2, action="append", help = "Names of two files to merge")   
+    parser.add_option(      "--merge",       dest="merge",     default=None,  type = "string", nargs=2, action="append", help = "Names of two files to merge OR   \
+                                                                                               to merge a series of h5 files, one can put 'D directory_path' and merge \
+                                                                                               all the h5 files files in the directory")   
     parser.add_option(      "--correctens",  dest="correctens",default=False, help = "Boolean flag to dump out observed reflectivity to be ingested into correct_ensemble", action="store_true")   
     parser.add_option(      "--addindex",    dest="addindex",  default=False, help = "Boolean flag to create indices for faster search", action="store_true")   
     parser.add_option(      "--scatter",     dest="scatter",   default=False, help = "Boolean flag to scatterplot observations data", action="store_true")
