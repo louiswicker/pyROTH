@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 #############################################################
 # pyROTH: A program to process LVL-2 volumes, unfold radial #
 #       velocities, and thin the radardata using a          #
@@ -39,28 +40,28 @@ from mpl_toolkits.basemap import Basemap
 from pyart.graph import cm
 
 # This flag adds an k/j/i index to the DART file, which is the index locations of the gridded data
-_write_grid_indices = False
+_write_grid_indices = True
 
 # True here uses the basemap county database to plot the county outlines.
 _plot_counties = True
 
 # Parameter dict for Gridding
 _grid_dict = {
-              'grid_spacing_xy' : 6000.,   # meters
-              'grid_radius_xy'  : 150000., # meters
+              'grid_spacing_xy' : 2000.,   # meters
+              'grid_radius_xy'  : 100000., # meters
               'weight_func'     : 'Cressman',
-              'ROI'             : 3000./0.707, # meters
+              'ROI'             : 2000./0.707, # meters
               'projection'      : 'lcc', # map projection to use for gridded data
               'mask_vr_with_dbz': True,
               '0dbz_obtype'     : True,
-              'halo_footprint'  : 4,
+              'halo_footprint'  : 5,
               'nthreads'        : 1,
              }
 
 # Dict for the standard deviation of obs_error for reflectivity or velocity (these values are squared when written to DART)            
 _obs_errors = {
-                'reflectivity': 5.0,
-                'velocity': 2.0
+                'reflectivity': 7.5,
+                'velocity': 3.0
               }
 
 # Parameter dict setting radar data parameters
@@ -68,6 +69,7 @@ _obs_errors = {
 _radar_parameters = {
                      'min_dbz_analysis': 10.0, 
                      'max_range': 150000.,
+                     'max_Nyquist_factor: 2,    # dont allow output of velocities > Nyquist*factor
                     }
         
 #=========================================================================================
@@ -88,7 +90,7 @@ class Gridded_Field(object):
 #=========================================================================================
 # DBZ Mask
 
-def dbz_masking(ref, thin_zeros=2):
+def dbz_masking(ref, thin_zeros=2, vr=None):
 
   mask = (ref.data.mask == True)
   
@@ -110,11 +112,15 @@ def dbz_masking(ref, thin_zeros=2):
     for n in np.arange(nlevel):
     
       mask1 = np.logical_and(ref.data[n] < 0.1, ref.data.mask[n] == False)  # true for dbz=0
-      mask2 = ref.data.mask[n]            # true for dbz>10
+      mask2 = ref.data.mask[n]                                              # true for dbz>10
       mask1[::thin_zeros, ::thin_zeros] = False
       ref.data.mask[n] = np.logical_or(mask1, mask2)
-    
-  return ref
+
+  if vr != None:
+    vr.data.mask = ref.data.mask
+    return ref, vr
+  else:
+    return ref
     
 #=========================================================================================
 # DART obs definitions (handy for writing out DART files)
@@ -309,13 +315,15 @@ def beam_elv(sfc_range, z):
 #
 #
 ########################################################################################  
-def write_DART_ascii(obs, fsuffix=None, obs_error=None, zero_dbz_obtype=True):
+def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
 
-  if fsuffix == None:
+  if filename == None:
       print("\n write_DART_ascii:  No output file name is given, writing to %s" % "obs_seq.txt")
       filename = "obs_seq.out"
   else:
-      filename = "%s_%s.out" % ("obs_seq", fsuffix)
+      dirname = os.path.dirname(filename)
+      basename = "%s_%s.out" % ("obs_seq", os.path.basename(filename))
+      filename =  os.path.join(dirname, basename)
       
   if obs_error == None:
       print "write_DART_ascii:  No obs error defined for observation, exiting"
@@ -615,7 +623,7 @@ def grid_data(volume, field):
 
   tt = timeit.clock()
   
-  for n, refl_sweep_data in enumerate(volume.iter_field(field)):
+  for n, sweep_data in enumerate(volume.iter_field(field)):
     if n == 0:
       begin = 0
       end   = volume.sweep_end_ray_index['data'][n] + 1
@@ -630,7 +638,7 @@ def grid_data(volume, field):
     nyquist[n]    = volume.get_nyquist_vel(n)
     
     x, y, z = volume.get_gate_x_y_z(n)
-    
+          
     obs_def = geometry.SwathDefinition(lons=xob, lats=yob) 
 
 # Original method - but the object tree (obs_def) is created twice.  So this is a bit faster
@@ -642,7 +650,7 @@ def grid_data(volume, field):
     input_index, output_index, index_array, distances = \
           kd_tree.get_neighbour_info(obs_def, area_def, roi)
                                        
-    tmp = kd_tree.get_sample_from_neighbour_info('custom', area_def.shape, refl_sweep_data,  \
+    tmp = kd_tree.get_sample_from_neighbour_info('custom', area_def.shape, sweep_data,  \
                                                   input_index, output_index, index_array, \
                                                   distance_array=distances, weight_funcs=wf, fill_value=np.nan)
 
@@ -713,7 +721,7 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
   cmapv.set_over('black',1.)
   
   normr = BoundaryNorm(np.arange(10, 85, 5), cmapr.N)
-  normv = BoundaryNorm(np.arange(-32, 34, 2), cmapv.N)
+  normv = BoundaryNorm(np.arange(-48, 50, 2), cmapv.N)
   
   min_dbz = _radar_parameters['min_dbz_analysis']  
   xwidth = ref.xg.max() - ref.xg.min()
@@ -725,7 +733,7 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
       print("\n pyROTH.grid_plot:  No output file name is given, writing to %s" % "VR_RF_...png")
       filename = "VR_RF_%2.2d_plot.png" % (sweep)
   else:
-       filename = "VR_RF_%2.2d_%s.png" % (sweep, fsuffix)
+       filename = "VR_RF_%2.2d_%s.png" % (sweep, fsuffix.split("/")[1])
 
   fig, (ax1, ax2) = P.subplots(1, 2, sharey=True, figsize=(15,8))
   
@@ -791,14 +799,15 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
   cbar = bgmap.colorbar(im1,location='right')
   cbar.set_label('Dealised Radial Velocity (meters_per_second)')
   ax2.set_title('Thresholded, Unfolded Radial Velocity (Gridded)') 
-  bgmap.scatter(xoffset,yoffset, c='k', s=50.,alpha=0.8, ax=ax2)
+  bgmap.scatter(xoffset,yoffset, c='k', s=50., alpha=0.8, ax=ax2)
   
 # Now plot locations of nan data
 
-  v_mask = vel.data.mask == True
+  v_mask = (vel.data.mask == True)
   bgmap.scatter(xg_2d[v_mask[sweep]], yg_2d[v_mask[sweep]], c='k', s = 1., alpha=0.5, ax=ax2)
 
 # Get other metadata....for labeling
+
   instrument_name = ref.metadata['instrument_name']
   time_start = ncdf.num2date(ref.time['data'][0], ref.time['units'])
   time_text = time_start.isoformat().replace("T"," ")
@@ -808,7 +817,102 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
   P.savefig(filename)
   
   if interactive:  P.show()
+
+#####################################################################################################
+def write_radar_file(obs, filename=None):
+    
+  _time_units    = 'seconds since 1970-01-01 00:00:00'
+  _calendar      = 'standard'
+
+  if filename == None:
+      print("\n write_DART_ascii:  No output file name is given, writing to %s" % "obs_seq.txt")
+      filename = "obs_seq.nc"
+  else:
+      dirname = os.path.dirname(filename)
+      basename = "%s_%s.nc" % ("obs_seq", os.path.basename(filename))
+      filename =  os.path.join(dirname, basename)
+
+  _stringlen     = 8
+  _datelen       = 19
+     
+# Extract stuff from obs object
+        
+  data       = obs.data
+  lats       = obs.lats
+  lons       = obs.lons
+  hgts       = obs.zg + obs.radar_hgt
+  kind       = ObType_LookUp(obs.field.upper())  
+  R_xy       = np.sqrt(obs.xg[20]**2 + obs.yg[20]**2)
+  elevations = beam_elv(R_xy, obs.zg[:,20,20])
+  name       = obs.field.upper()
+
+# platform information
+
+  if kind == ObType_LookUp("VR"):
+      platform_nyquist    = obs.nyquist
+      platform_lat        = np.radians(obs.radar_lat)
+      platform_lon        = np.radians(obs.radar_lon)
+      platform_hgt        = obs.radar_hgt
+
+# Use the volume mean time for the time of the volume
+      
+  dtime   = ncdf.num2date(obs.time['data'].mean(), obs.time['units'])
+  days    = ncdf.date2num(dtime, units = "days since 1601-01-01 00:00:00")
+  seconds = np.int(86400.*(days - np.floor(days)))  
   
+# create the fileput filename and create new netCDF4 file
+
+#filename = os.path.join(path, "%s_%s%s" % ("Inflation", DT.strftime("%Y-%m-%d_%H:%M:%S"), ".nc" ))
+
+  print "\n -->  Writing %s as the radar file..." % (filename)
+    
+  rootgroup = ncdf.Dataset(filename, 'w', format='NETCDF4')
+      
+# Create dimensions
+
+  shape = data.shape
+  
+  rootgroup.createDimension('nz',   shape[0])
+  rootgroup.createDimension('ny',   shape[1])
+  rootgroup.createDimension('nx',   shape[2])
+  rootgroup.createDimension('stringlen', _stringlen)
+  rootgroup.createDimension('datelen', _datelen)
+  
+# Write some attributes
+
+  rootgroup.time_units = _time_units
+  rootgroup.calendar   = _calendar
+  rootgroup.stringlen  = "%d" % (_stringlen)
+  rootgroup.datelen    = "%d" % (_datelen)
+
+# Create variables
+
+  V_type  = rootgroup.createVariable(name, 'f4', ('nz', 'ny', 'nx'), zlib=True, shuffle=True )    
+  V_dates = rootgroup.createVariable('date', 'S1', ('datelen'), zlib=True, shuffle=True)
+  V_xc    = rootgroup.createVariable('XC', 'f4', ('nx'), zlib=True, shuffle=True)
+  V_yc    = rootgroup.createVariable('YC', 'f4', ('ny'), zlib=True, shuffle=True)
+  V_el    = rootgroup.createVariable('EL', 'f4', ('nz'), zlib=True, shuffle=True)
+
+  V_lat   = rootgroup.createVariable('LATS', 'f4', ('ny','nx'), zlib=True, shuffle=True)
+  V_lon   = rootgroup.createVariable('LONS', 'f4', ('ny','nx'), zlib=True, shuffle=True)
+  V_hgt   = rootgroup.createVariable('HGTS', 'f4', ('nz', 'ny', 'nx'), zlib=True, shuffle=True)
+
+# Write variables
+
+  rootgroup.variables['date'][:] = ncdf.stringtoarr(dtime.strftime("%Y-%m-%d_%H:%M:%S"), _datelen)
+  
+  rootgroup.variables[name][:]   = data[:]
+  rootgroup.variables['XC'][:]   = obs.xg[:]
+  rootgroup.variables['YC'][:]   = obs.yg[:]
+  rootgroup.variables['EL'][:]   = elevations[:]
+  rootgroup.variables['HGTS'][:] = obs.zg[:]
+  rootgroup.variables['LATS'][:] = lats[:]
+  rootgroup.variables['LONS'][:] = lons[:]
+  
+  rootgroup.sync()
+  rootgroup.close()
+  
+  return filename  
 ########################################################################
 # Main function
 
@@ -820,13 +924,17 @@ if __name__ == "__main__":
   print ''
 
   parser = OptionParser()
-  parser.add_option("-f", "--file",       dest="fname",     default=None,  type="string", \
+  parser.add_option("-d", "--dir",       dest="dname",     default=None,  type="string", \
+                     help = "Directory of files to process")
+  parser.add_option("-o", "--out",       dest="out_dir",     default="roth_files",  type="string", \
+                     help = "Directory to place output files in")
+  parser.add_option("-f", "--file",      dest="fname",     default=None,  type="string", \
                      help = "filename of NEXRAD level II volume to process")
-  parser.add_option("-u", "--unfold",     dest="unfold",    default="phase",  type="string", \
+  parser.add_option("-u", "--unfold",    dest="unfold",    default="phase",  type="string", \
                      help = "dealiasing method to use (phase or region, default = phase)")
   parser.add_option("-w", "--write",     dest="write",   default=False, \
                      help = "Boolean flag to write DART ascii file", action="store_true")
-  parser.add_option("-p", "--plot",       dest="plot",      default=-1,  type="int",      \
+  parser.add_option("-p", "--plot",      dest="plot",      default=-1,  type="int",      \
                      help = "Specify a number between 0 and # elevations to plot ref and vr in that co-plane")
   parser.add_option("-i", "--interactive", dest="interactive", default=False,  action="store_true",     \
                      help = "Boolean flag to specify to plot image to screen (when plot > -1).")  
@@ -840,18 +948,42 @@ if __name__ == "__main__":
 
   print ''
   print ' ================================================================================'
-
-  if options.fname == None:
-    print "\n\n ***** USER MUST SPECIFY NEXRAD LEVEL II (MESSAGE 31) FILE! *****"
-    print "\n                         EXITING!\n\n"
-    parser.print_help()
-    print
-    sys.exit(1)
-  else:
-    fname   = os.path.abspath(options.fname)
-    fsuffix = os.path.split(fname)[-1][0:17]
-    fsuffix = fsuffix[0:4] + "_" + fsuffix[4:]
   
+  if not os.path.exists(options.out_dir):
+    os.mkdir(options.out_dir)
+
+  out_filenames = []
+  in_filenames  = []
+
+  if options.dname == None:
+          
+    if options.fname == None:
+      print "\n\n ***** USER MUST SPECIFY NEXRAD LEVEL II (MESSAGE 31) FILE! *****"
+      print "\n                         EXITING!\n\n"
+      parser.print_help()
+      print
+      sys.exit(1)
+      
+    else:
+      in_filenames.append(os.path.abspath(options.fname))
+      strng = os.path.basename(in_filenames[0])[0:17]
+      strng = strng[0:4] + "_" + strng[4:]
+      strng = os.path.join(options.out_dir, strng)
+      out_filenames.append(strng) 
+
+  else:
+    in_filenames = glob.glob("%s/*" % os.path.abspath(options.dname))
+    print("\n pyROTH:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dname))
+    print("\n pyROTH:  First file is %s\n" % (in_filenames[0]))
+    print("\n pyROTH:  Last  file is %s\n" % (in_filenames[-1]))
+ 
+    if in_filenames[0][-3:] == "V06":
+      for item in in_filenames:
+        strng = os.path.basename(item)[0:17]
+        strng = strng[0:4] + "_" + strng[4:]
+        strng = os.path.join(options.out_dir, strng)
+        out_filenames.append(strng) 
+
   if options.unfold == "phase":
     print "\n pyROTH dealias_unwrap_phase unfolding will be used\n"
     unfold_type = "phase"
@@ -871,50 +1003,67 @@ if __name__ == "__main__":
   
 # Read input file and create radar object
 
-  print '\n Reading: {}\n'.format(fname)
+  t0 = timeit.time()
+
+  for n, fname in enumerate(in_filenames):
+
+      print '\n Reading: {}\n'.format(fname)
+      print '\n Writing: {}\n'.format(out_filenames[n])
    
-  t0   = timeit.time()
-   
-  tim0 = timeit.time()
+      tim0 = timeit.time()
   
-  volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
-                                        additional_metadata=None, file_field_names=False, 
-                                        delay_field_loading=False, 
-                                        station=None, scans=None, linear_interp=True)
-  pyROTH_io_cpu = timeit.time() - tim0
+      volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
+                                            additional_metadata=None, file_field_names=False, 
+                                            delay_field_loading=False, 
+                                            station=None, scans=None, linear_interp=True)
+      pyROTH_io_cpu = timeit.time() - tim0
   
-  print "\n Time for reading in LVL2: {} seconds".format(pyROTH_io_cpu)
+      print "\n Time for reading in LVL2: {} seconds".format(pyROTH_io_cpu)
   
-  tim0 = timeit.time()
+      tim0 = timeit.time()
   
-  gatefilter = volume_prep(volume, unfold_type=unfold_type) 
+      gatefilter = volume_prep(volume, unfold_type=unfold_type) 
   
-  pyROTH_unfold_cpu = timeit.time() - tim0
+      pyROTH_unfold_cpu = timeit.time() - tim0
 
-  print "\n Time for unfolding velocity: {} seconds".format(pyROTH_unfold_cpu)
+      print "\n Time for unfolding velocity: {} seconds".format(pyROTH_unfold_cpu)
   
-  tim0 = timeit.time()
+      tim0 = timeit.time()
 
-  ref = dbz_masking(grid_data(volume, "reflectivity"))
+      ref = dbz_masking(grid_data(volume, "reflectivity"))
 
-  if unfold_type == None:  
-      vel = grid_data(volume, "velocity")
-  else:
-      vel = grid_data(volume, "unfolded velocity")
+      if unfold_type == None:  
+          vel = grid_data(volume, "velocity")
+      else:
+          vel = grid_data(volume, "unfolded velocity")
 
-  pyROTH_regrid_cpu = timeit.time() - tim0
-  
-  print "\n Time for gridding fields: {} seconds".format(pyROTH_regrid_cpu)
+# Mask the radial velocity where dbz is masked
+
+      vel.data.mask = np.logical_or(vel.data.mask, ref.data[...] < _radar_parameters['min_dbz_analysis'])
+
+# Limit max/min values of radial velocity (bad unfolding, too much "truth")
+
+      for m in np.arange(volume.nsweeps):
+          Vr_max = volume.get_nyquist_vel(m)
+          mask1  = (np.abs(vel.data[m]) > _radar_parameters['max_Nyquist_factor']*Vr_max)                 
+          vel.data.mask[m] = np.logical_or(vel.data.mask[m], mask1)
     
-  if plot_grid:
-      plottime = grid_plot(ref, vel, sweep_num, fsuffix=fsuffix, shapefiles=options.shapefiles, interactive=options.interactive)
-
-  if options.write == True:      
-      ret = write_DART_ascii(vel, fsuffix=fsuffix+"_VR", obs_error=_obs_errors['velocity'])
-      ret = write_DART_ascii(ref, fsuffix=fsuffix+"_RF", obs_error=_obs_errors['reflectivity'])
+      pyROTH_regrid_cpu = timeit.time() - tim0
+  
+      print "\n Time for gridding fields: {} seconds".format(pyROTH_regrid_cpu)
     
+      if plot_grid:
+          plottime = grid_plot(ref, vel, sweep_num, fsuffix=out_filenames[n], \
+                     shapefiles=options.shapefiles, interactive=options.interactive)
+
+      if options.write == True:      
+          ret = write_DART_ascii(vel, filename=out_filenames[n]+"_VR", obs_error=_obs_errors['velocity'])
+          ret = write_DART_ascii(ref, filename=out_filenames[n]+"_RF", obs_error=_obs_errors['reflectivity'])
+          ret = write_radar_file(vel, filename=out_filenames[n]+"_VR")
+          ret = write_radar_file(ref, filename=out_filenames[n]+"_RF")
+  
   pyROTH_cpu_time = timeit.time() - t0
-  
+
   print "\n Time for pyROTH operations: {} seconds".format(pyROTH_cpu_time)
 
   print "\n PROGRAM pyROTH COMPLETED\n"
