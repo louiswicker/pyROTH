@@ -48,28 +48,33 @@ _plot_counties = True
 # Parameter dict for Gridding
 _grid_dict = {
               'grid_spacing_xy' : 2000.,   # meters
-              'grid_radius_xy'  : 100000., # meters
+              'grid_radius_xy'  : 150000., # meters
               'weight_func'     : 'Cressman',
               'ROI'             : 2000./0.707, # meters
               'projection'      : 'lcc', # map projection to use for gridded data
               'mask_vr_with_dbz': True,
               '0dbz_obtype'     : True,
-              'halo_footprint'  : 5,
+              'thin_zeros'      : 8,
+              'halo_footprint'  : 3,
               'nthreads'        : 1,
+              'max_height'      : 10000.,
+              'zero_heights'    : [3000.,7000.], 
              }
 
-# Dict for the standard deviation of obs_error for reflectivity or velocity (these values are squared when written to DART)            
+# Dict for the standard deviation of obs_error for reflectivity or velocity (these values are squared when written to DART) 
+           
 _obs_errors = {
-                'reflectivity': 7.5,
-                'velocity': 3.0
+                'reflectivity'  : 10.,
+                '0reflectivity' : 5.0, 
+                'velocity'      : 4.0
               }
 
 # Parameter dict setting radar data parameters
                
 _radar_parameters = {
-                     'min_dbz_analysis': 10.0, 
+                     'min_dbz_analysis': 20.0, 
                      'max_range': 150000.,
-                     'max_Nyquist_factor: 2,    # dont allow output of velocities > Nyquist*factor
+                     'max_Nyquist_factor': 2,    # dont allow output of velocities > Nyquist*factor
                     }
         
 #=========================================================================================
@@ -90,37 +95,90 @@ class Gridded_Field(object):
 #=========================================================================================
 # DBZ Mask
 
-def dbz_masking(ref, thin_zeros=2, vr=None):
+def dbz_masking(ref, thin_zeros=2):
 
-  mask = (ref.data.mask == True)
+  if _grid_dict['0dbz_obtype'] == True:   # create a separate data type
   
-  ref.data.mask = False
+      print("\n Creating new 0DBZ levels for output\n")
+      
+      nz, ny, nx = ref.data.shape
+      
+      zero_dbz = np.ma.zeros((ny, nx), dtype=np.float32)
+
+      c_ref = ref.data.max(axis=0)  
+      
+      raw_field = np.where(c_ref.mask==True, 0.0, c_ref.data)
+      
+      max_neighbor = (ndimage.maximum_filter(raw_field, size=_grid_dict['halo_footprint']) > 0.1)
+      
+      zero_dbz.mask = np.where(max_neighbor, True, False)
+
+# the trick here was to realize that you need to first flip the zero_dbz_mask array and then thin by shutting off mask      
+      if thin_zeros > 0:
+          mask2 = np.logical_not(zero_dbz.mask)                                            # true for dbz>10
+          mask2[::thin_zeros, ::thin_zeros] = False
+          zero_dbz.mask = np.logical_or(max_neighbor, mask2)
+      
+      ref.zero_dbz = zero_dbz
+
+      new_z = np.ma.zeros((2, ny, nx), dtype=np.float32)
+
+      for n, z in enumerate(_grid_dict['zero_heights']):
+          new_z[n] = z
+                
+      ref.zero_dbz_zg = new_z
+     
+  else: 
+      mask = (ref.data.mask == True)  # this is the original no data mask from interp
+  
+      ref.data.mask = False           # set the ref mask to false everywhere
     
-  ref.data[mask] = 0.0
+      ref.data[mask] = 0.0             
   
-  nlevel = ref.data.shape[0]
+      nlevel = ref.data.shape[0]
   
-  for n in np.arange(nlevel):
-  
-    max_values = ndimage.maximum_filter(ref.data[n,:,:], size=_grid_dict['halo_footprint'])
-    halo  = (max_values > 0.1) & mask[n]
-    
-    ref.data.mask[n,halo] = True
+      for n in np.arange(nlevel):  
+          max_values = ndimage.maximum_filter(ref.data[n,:,:], size=_grid_dict['halo_footprint'])
+          halo  = (max_values > 0.1) & mask[n]    
+          ref.data.mask[n,halo] = True
 
-  if thin_zeros > 0:
+      if thin_zeros > 0:
 
-    for n in np.arange(nlevel):
-    
-      mask1 = np.logical_and(ref.data[n] < 0.1, ref.data.mask[n] == False)  # true for dbz=0
-      mask2 = ref.data.mask[n]                                              # true for dbz>10
-      mask1[::thin_zeros, ::thin_zeros] = False
-      ref.data.mask[n] = np.logical_or(mask1, mask2)
+          for n in np.arange(nlevel):   
+              mask1 = np.logical_and(ref.data[n] < 0.1, ref.data.mask[n] == False)  # true for dbz=0
+              mask2 = ref.data.mask[n]                                              # true for dbz>10
+              mask1[::thin_zeros, ::thin_zeros] = False
+              ref.data.mask[n] = np.logical_or(mask1, mask2)
 
-  if vr != None:
-    vr.data.mask = ref.data.mask
-    return ref, vr
-  else:
-    return ref
+  if _grid_dict['max_height'] > 0:
+      mask1  = (ref.zg > _grid_dict['max_height'])  
+      mask2 = ref.data.mask
+      ref.data.mask = np.logical_or(mask1, mask2)
+        
+  return ref
+
+#=========================================================================================
+# VR Masking
+
+def vel_masking(vel, ref, volume):
+
+# Mask the radial velocity where dbz is masked
+
+   vel.data.mask = np.logical_or(vel.data.mask, ref.data[...] < _radar_parameters['min_dbz_analysis'])
+
+# Limit max/min values of radial velocity (bad unfolding, too much "truth")
+
+   for m in np.arange(volume.nsweeps):
+       Vr_max = volume.get_nyquist_vel(m)
+       mask1  = (np.abs(vel.data[m]) > _radar_parameters['max_Nyquist_factor']*Vr_max)                 
+       vel.data.mask[m] = np.logical_or(vel.data.mask[m], mask1)
+        
+   if _grid_dict['max_height'] > 0:
+      mask1  = (vel.zg - vel.radar_hgt > _grid_dict['max_height'])  
+      mask2 = vel.data.mask
+      vel.data.mask = np.logical_or(mask1, mask2)
+      
+   return vel
     
 #=========================================================================================
 # DART obs definitions (handy for writing out DART files)
@@ -348,7 +406,24 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
   truth      = 1.0  # dummy variable
 
 # Fix the negative lons...
+
   lons       = np.where(lons > 0.0, lons, lons+(2.0*np.pi))
+
+# if there is a zero dbz obs type, reform the data array 
+  try:
+      nz, ny, nx        = data.shape
+      new_data          = np.ma.zeros((nz+2, ny, nx), dtype=np.float32)
+      new_hgts          = np.ma.zeros((nz+2, ny, nx), dtype=np.float32)
+      new_data[0:nz]    = data[0:nz]
+      new_hgts[0:nz]    = hgts[0:nz]
+      new_data[nz]      = obs.zero_dbz
+      new_data[nz+1]    = obs.zero_dbz
+      new_hgts[nz:nz+2] = obs.zero_dbz_zg[0:2]
+      data = new_data
+      hgts = new_hgts
+      print("\n write_DART_ascii:  0-DBZ separate type added to reflectivity output\n")
+  except AttributeError:
+      print("\n write_DART_ascii:  No 0-DBZ separate type found\n")
 
 # platform information
 
@@ -410,11 +485,13 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
       
           fi.write("kind\n")
           
-          if kind == ObType_LookUp("REFLECTIVITY") and data[k,j,i] <= 0.1 and zero_dbz_obtype:
+          if kind == ObType_LookUp("REFLECTIVITY") and data[k,j,i] <= 0.1:
               fi.write("     %d     \n" % ObType_LookUp("RADAR_CLEARAIR_REFLECTIVITY") )
               nobs_clearair += 1
+              o_error = obs_error[1]
           else:     
               fi.write("     %d     \n" % kind )
+              o_error = obs_error[0]
 
 # If this GEOS cloud pressure observation, write out extra information (NOTE - NOT TESTED FOR HDF2ASCII LJW 04/13/15)
 # 
@@ -453,7 +530,7 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
 
     # Logic for command line override of observational error variances
 
-          fi.write("    %20.14f  \n" % obs_error**2 )
+          fi.write("    %20.14f  \n" % o_error**2 )
 
           if nobs % 1000 == 0: print(" write_DART_ascii:  Processed observation # %d" % nobs)
   
@@ -779,8 +856,15 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
 #   bgmap.scatter(xg_2d[r_mask].transpose(), yg_2d[r_mask].transpose(), c='k', s = 1., alpha=0.5, ax=ax1)
 
 # Plot zeros as "o"
-  r_mask = np.logical_and(ref.data[sweep] < 1.0, (ref.data.mask[sweep] == False))
-  bgmap.scatter(xg_2d[r_mask].transpose(), yg_2d[r_mask].transpose(), s=25, facecolors='none', edgecolors='k', alpha=1.0, ax=ax1)
+
+  try:
+      r_mask = (ref.zero_dbz.mask == False)
+      bgmap.scatter(xg_2d[r_mask].transpose(), yg_2d[r_mask].transpose(), s=25, facecolors='none', \
+                    edgecolors='k', alpha=1.0, ax=ax1) 
+  except AttributeError:
+      r_mask = np.logical_and(ref.data[sweep] < 1.0, (ref.data.mask[sweep] == False))
+      bgmap.scatter(xg_2d[r_mask].transpose(), yg_2d[r_mask].transpose(), s=25, facecolors='none', \
+                    edgecolors='k', alpha=1.0, ax=ax1)
   
 # RADIAL VELOCITY PLOT
 
@@ -819,7 +903,7 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
   if interactive:  P.show()
 
 #####################################################################################################
-def write_radar_file(obs, filename=None):
+def write_radar_file(ref, vel, filename=None):
     
   _time_units    = 'seconds since 1970-01-01 00:00:00'
   _calendar      = 'standard'
@@ -835,28 +919,26 @@ def write_radar_file(obs, filename=None):
   _stringlen     = 8
   _datelen       = 19
      
-# Extract stuff from obs object
+# Extract grid and ref data
         
-  data       = obs.data
-  lats       = obs.lats
-  lons       = obs.lons
-  hgts       = obs.zg + obs.radar_hgt
-  kind       = ObType_LookUp(obs.field.upper())  
-  R_xy       = np.sqrt(obs.xg[20]**2 + obs.yg[20]**2)
-  elevations = beam_elv(R_xy, obs.zg[:,20,20])
-  name       = obs.field.upper()
-
-# platform information
-
-  if kind == ObType_LookUp("VR"):
-      platform_nyquist    = obs.nyquist
-      platform_lat        = np.radians(obs.radar_lat)
-      platform_lon        = np.radians(obs.radar_lon)
-      platform_hgt        = obs.radar_hgt
+  dbz        = ref.data
+  lats       = ref.lats
+  lons       = ref.lons
+  hgts       = ref.zg + ref.radar_hgt
+  kind       = ObType_LookUp(ref.field.upper())  
+  R_xy       = np.sqrt(ref.xg[20]**2 + ref.yg[20]**2)
+  elevations = beam_elv(R_xy, ref.zg[:,20,20])
+ 
+# Extract velocity data
+  
+  vr                  = vel.data
+  platform_lat        = np.radians(vel.radar_lat)
+  platform_lon        = np.radians(vel.radar_lon)
+  platform_hgt        = vel.radar_hgt
 
 # Use the volume mean time for the time of the volume
       
-  dtime   = ncdf.num2date(obs.time['data'].mean(), obs.time['units'])
+  dtime   = ncdf.num2date(ref.time['data'].mean(), ref.time['units'])
   days    = ncdf.date2num(dtime, units = "days since 1601-01-01 00:00:00")
   seconds = np.int(86400.*(days - np.floor(days)))  
   
@@ -870,7 +952,7 @@ def write_radar_file(obs, filename=None):
       
 # Create dimensions
 
-  shape = data.shape
+  shape = dbz.shape
   
   rootgroup.createDimension('nz',   shape[0])
   rootgroup.createDimension('ny',   shape[1])
@@ -880,14 +962,18 @@ def write_radar_file(obs, filename=None):
   
 # Write some attributes
 
-  rootgroup.time_units = _time_units
-  rootgroup.calendar   = _calendar
-  rootgroup.stringlen  = "%d" % (_stringlen)
-  rootgroup.datelen    = "%d" % (_datelen)
+  rootgroup.time_units   = _time_units
+  rootgroup.calendar     = _calendar
+  rootgroup.stringlen    = "%d" % (_stringlen)
+  rootgroup.datelen      = "%d" % (_datelen)
+  rootgroup.platform_lat = platform_lat
+  rootgroup.platform_lon = platform_lon
+  rootgroup.platform_hgt = platform_hgt
 
 # Create variables
 
-  V_type  = rootgroup.createVariable(name, 'f4', ('nz', 'ny', 'nx'), zlib=True, shuffle=True )    
+  R_type  = rootgroup.createVariable('REF', 'f4', ('nz', 'ny', 'nx'), zlib=True, shuffle=True )    
+  V_type  = rootgroup.createVariable('VEL', 'f4', ('nz', 'ny', 'nx'), zlib=True, shuffle=True )    
   V_dates = rootgroup.createVariable('date', 'S1', ('datelen'), zlib=True, shuffle=True)
   V_xc    = rootgroup.createVariable('XC', 'f4', ('nx'), zlib=True, shuffle=True)
   V_yc    = rootgroup.createVariable('YC', 'f4', ('ny'), zlib=True, shuffle=True)
@@ -901,11 +987,12 @@ def write_radar_file(obs, filename=None):
 
   rootgroup.variables['date'][:] = ncdf.stringtoarr(dtime.strftime("%Y-%m-%d_%H:%M:%S"), _datelen)
   
-  rootgroup.variables[name][:]   = data[:]
-  rootgroup.variables['XC'][:]   = obs.xg[:]
-  rootgroup.variables['YC'][:]   = obs.yg[:]
+  rootgroup.variables['REF'][:]  = dbz[:]
+  rootgroup.variables['VEL'][:]  = vr[:]
+  rootgroup.variables['XC'][:]   = ref.xg[:]
+  rootgroup.variables['YC'][:]   = ref.yg[:]
   rootgroup.variables['EL'][:]   = elevations[:]
-  rootgroup.variables['HGTS'][:] = obs.zg[:]
+  rootgroup.variables['HGTS'][:] = ref.zg[:]
   rootgroup.variables['LATS'][:] = lats[:]
   rootgroup.variables['LONS'][:] = lons[:]
   
@@ -913,6 +1000,7 @@ def write_radar_file(obs, filename=None):
   rootgroup.close()
   
   return filename  
+  
 ########################################################################
 # Main function
 
@@ -1030,23 +1118,20 @@ if __name__ == "__main__":
   
       tim0 = timeit.time()
 
-      ref = dbz_masking(grid_data(volume, "reflectivity"))
+# grid the reflectivity and then mask it off based on parameters set at top
 
+      ref = dbz_masking(grid_data(volume, "reflectivity"), thin_zeros=_grid_dict['thin_zeros'])
+
+# grid the radial velocity
+ 
       if unfold_type == None:  
           vel = grid_data(volume, "velocity")
       else:
           vel = grid_data(volume, "unfolded velocity")
 
-# Mask the radial velocity where dbz is masked
+# Mask it off based on dictionary parameters set at top
 
-      vel.data.mask = np.logical_or(vel.data.mask, ref.data[...] < _radar_parameters['min_dbz_analysis'])
-
-# Limit max/min values of radial velocity (bad unfolding, too much "truth")
-
-      for m in np.arange(volume.nsweeps):
-          Vr_max = volume.get_nyquist_vel(m)
-          mask1  = (np.abs(vel.data[m]) > _radar_parameters['max_Nyquist_factor']*Vr_max)                 
-          vel.data.mask[m] = np.logical_or(vel.data.mask[m], mask1)
+      vel = vel_masking(vel, ref, volume)
     
       pyROTH_regrid_cpu = timeit.time() - tim0
   
@@ -1057,10 +1142,10 @@ if __name__ == "__main__":
                      shapefiles=options.shapefiles, interactive=options.interactive)
 
       if options.write == True:      
-          ret = write_DART_ascii(vel, filename=out_filenames[n]+"_VR", obs_error=_obs_errors['velocity'])
-          ret = write_DART_ascii(ref, filename=out_filenames[n]+"_RF", obs_error=_obs_errors['reflectivity'])
-          ret = write_radar_file(vel, filename=out_filenames[n]+"_VR")
-          ret = write_radar_file(ref, filename=out_filenames[n]+"_RF")
+          ret = write_DART_ascii(vel, filename=out_filenames[n]+"_VR", obs_error=[_obs_errors['velocity']])
+          ret = write_DART_ascii(ref, filename=out_filenames[n]+"_RF", obs_error=[_obs_errors['reflectivity'],\
+                                                                                 _obs_errors['0reflectivity']])
+          ret = write_radar_file(ref, vel, filename=out_filenames[n])
   
   pyROTH_cpu_time = timeit.time() - t0
 
