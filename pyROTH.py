@@ -28,13 +28,13 @@ import numpy as np
 import scipy.interpolate
 import scipy.ndimage as ndimage
 import scipy.spatial
-
+from optparse import OptionParser
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredText
 import netCDF4 as ncdf
 
-from pyresample import kd_tree, utils, geometry
+from pyresample import geometry, utils
 import cressman
 import pyart
-from optparse import OptionParser
 
 import pylab as P  
 from mpl_toolkits.basemap import Basemap
@@ -50,7 +50,7 @@ _plot_counties = True
 _grid_dict = {
               'grid_spacing_xy' : 2000.,   # meters
               'grid_radius_xy'  : 150000., # meters
-              'weight_func'     : 'GC',    # options are Cressman, GC, and Exp
+              'weight_func'     : 'Cressman',    # options are Cressman, GC, and Exp
               'ROI'             : 2000./0.707, # meters
               'projection'      : 'lcc', # map projection to use for gridded data
               'mask_vr_with_dbz': True,
@@ -128,6 +128,7 @@ def dbz_masking(ref, thin_zeros=2):
           new_z[n] = z
                 
       ref.zero_dbz_zg = new_z
+      ref.cref        = c_ref
      
   else: 
       mask = (ref.data.mask == True)  # this is the original no data mask from interp
@@ -762,11 +763,8 @@ def grid_data(volume, field):
     ix = np.searchsorted(xg, xob)
     iy = np.searchsorted(yg, yob)
     
-#   tmp = cressman.cressman(xob, yob, obs, xg, yg, roi, np.nan)
-
     if obs.size > 0:
         tmp = cressman.obs_2_grid2d(obs, xob, yob, xg, yg, ix, iy, roi, -99999.)
-#         tmp  = tmp.transpose()
         new_mask = (tmp == -99999.)
         new[n] = np.ma.array(tmp, mask=new_mask)
     else:
@@ -784,14 +782,12 @@ def grid_data(volume, field):
     ix = np.searchsorted(xg, xob)
     iy = np.searchsorted(yg, yob)
 
-
-#     tmp = cressman.cressman(xob, yob, zobs, xg, yg, roi, np.nan)
     tmp = cressman.obs_2_grid2d(zobs, xob, yob, xg, yg, ix, iy, roi, -99999.)
     new_mask = (tmp == -99999.)
     zgrid[n] = np.ma.array(tmp, mask=new_mask)
     
 
-  print("\n %f secs to run pyresample analysis for all levels \n" % (timeit.clock()-tt))
+  print("\n %f secs to run superob analysis for all levels \n" % (timeit.clock()-tt))
 
   return Gridded_Field("data_grid", field = field, data = new, proj4 = proj4_args, 
                        xg = xg, yg = yg, zg = zgrid,                   
@@ -901,6 +897,10 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
   cbar.set_label('Reflectivity (dBZ)')
   ax1.set_title('Thresholded Reflectivity (Gridded)')
   bgmap.scatter(xoffset,yoffset, c='k', s=50., alpha=0.8, ax=ax1)
+  
+  at = AnchoredText("Max dBZ: %4.1f" % (ref.data[sweep].max()), loc=4, prop=dict(size=12), frameon=True,)
+  at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
+  ax1.add_artist(at)
 
 # Plot missing values as points.
 #   r_mask = (ref.data.mask[sweep] == True)
@@ -935,7 +935,12 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
   cbar.set_label('Dealised Radial Velocity (meters_per_second)')
   ax2.set_title('Thresholded, Unfolded Radial Velocity (Gridded)') 
   bgmap.scatter(xoffset,yoffset, c='k', s=50., alpha=0.8, ax=ax2)
-  
+
+  at = AnchoredText("Max Vr: %4.1f \nMin Vr: %4.1f " % \
+                 (vel.data[sweep].max(),vel.data[sweep].min()), loc=4, prop=dict(size=12), frameon=True,)
+  at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
+  ax2.add_artist(at)  
+    
 # Now plot locations of nan data
 
   v_mask = (vel.data.mask == True)
@@ -979,12 +984,27 @@ def write_radar_file(ref, vel, filename=None):
   kind       = ObType_LookUp(ref.field.upper())  
   R_xy       = np.sqrt(ref.xg[20]**2 + ref.yg[20]**2)
   elevations = beam_elv(R_xy, ref.zg[:,20,20])
- 
+  
+# if there is a zero dbz obs type, reform the data array 
+  try:
+      nx1, ny1       = ref.zero_dbz.shape
+      zero_data      = np.ma.zeros((2, ny1, nx1), dtype=np.float32)
+      zero_hgts      = np.ma.zeros((2, ny1, nx1), dtype=np.float32)
+      zero_data[0]   = ref.zero_dbz
+      zero_data[1]   = ref.zero_dbz
+      zero_hgts[0:2] = ref.zero_dbz_zg[0:2]
+      cref           = ref.cref
+      zero_flag = True
+      print("\n write_DART_ascii:  0-DBZ separate type added to netcdf output\n")
+  except AttributeError:
+      zero_flag = False
+      print("\n write_DART_ascii:  No 0-DBZ separate type found\n")
+      
 # Extract velocity data
   
   vr                  = vel.data
-  platform_lat        = np.radians(vel.radar_lat)
-  platform_lon        = np.radians(vel.radar_lon)
+  platform_lat        = vel.radar_lat
+  platform_lon        = vel.radar_lon
   platform_hgt        = vel.radar_hgt
 
 # Use the volume mean time for the time of the volume
@@ -1010,6 +1030,8 @@ def write_radar_file(ref, vel, filename=None):
   rootgroup.createDimension('nx',   shape[2])
   rootgroup.createDimension('stringlen', _stringlen)
   rootgroup.createDimension('datelen', _datelen)
+  if zero_flag:
+      rootgroup.createDimension('nz2',   2)
   
 # Write some attributes
 
@@ -1024,7 +1046,13 @@ def write_radar_file(ref, vel, filename=None):
 # Create variables
 
   R_type  = rootgroup.createVariable('REF', 'f4', ('nz', 'ny', 'nx'), zlib=True, shuffle=True )    
-  V_type  = rootgroup.createVariable('VEL', 'f4', ('nz', 'ny', 'nx'), zlib=True, shuffle=True )    
+  V_type  = rootgroup.createVariable('VEL', 'f4', ('nz', 'ny', 'nx'), zlib=True, shuffle=True )
+  
+  if zero_flag:
+      R0_type   = rootgroup.createVariable('0REF',  'f4', ('nz2', 'ny', 'nx'), zlib=True, shuffle=True )    
+      Z0_type   = rootgroup.createVariable('0HGTS', 'f4', ('nz2', 'ny', 'nx'), zlib=True, shuffle=True )
+      CREF_type = rootgroup.createVariable('CREF', 'f4', ('ny', 'nx'), zlib=True, shuffle=True )
+      
   V_dates = rootgroup.createVariable('date', 'S1', ('datelen'), zlib=True, shuffle=True)
   V_xc    = rootgroup.createVariable('XC', 'f4', ('nx'), zlib=True, shuffle=True)
   V_yc    = rootgroup.createVariable('YC', 'f4', ('ny'), zlib=True, shuffle=True)
@@ -1046,6 +1074,11 @@ def write_radar_file(ref, vel, filename=None):
   rootgroup.variables['HGTS'][:] = ref.zg[:]
   rootgroup.variables['LATS'][:] = lats[:]
   rootgroup.variables['LONS'][:] = lons[:]
+  
+  if zero_flag:
+       rootgroup.variables['0REF'][:]   = zero_data
+       rootgroup.variables['0HGTS'][:]  = zero_hgts
+       rootgroup.variables['CREF'][:]   = cref
   
   rootgroup.sync()
   rootgroup.close()
@@ -1185,9 +1218,18 @@ if __name__ == "__main__":
       print "\n Time for reading in LVL2: {} seconds".format(pyROTH_io_cpu)
   
       tim0 = timeit.time()
-  
-      gatefilter = volume_prep(volume, unfold_type=unfold_type) 
-  
+      
+# unfolding can fail if the data are not written quite write - instead of quiting, try to unfold with region method
+      try:
+          gatefilter = volume_prep(volume, unfold_type=unfold_type) 
+      except ValueError:
+          try:
+              print("\n ----> Phase unfolding method has failed!! Trying region unfolding method\n")
+              gatefilter = volume_prep(volume, unfold_type="region")
+          except:
+              print("\n ----> Both unfolding methods have failed!! Turning off unfolding\n\n")
+              unfold_type = None 
+          
       pyROTH_unfold_cpu = timeit.time() - tim0
 
       print "\n Time for unfolding velocity: {} seconds".format(pyROTH_unfold_cpu)
@@ -1204,7 +1246,7 @@ if __name__ == "__main__":
           vel = grid_data(volume, "velocity")
       else:
           vel = grid_data(volume, "unfolded velocity")
-
+          
 # Mask it off based on dictionary parameters set at top
 
       vel = vel_masking(vel, ref, volume)

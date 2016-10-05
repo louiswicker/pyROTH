@@ -22,6 +22,7 @@ from scipy import interpolate
 from mpl_toolkits.basemap import Basemap
 from mpl_toolkits.axes_grid import AxesGrid
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredText
 
 _debug               = True
 _verbose             = True
@@ -1438,7 +1439,7 @@ class pyDART():
             self.file(filename=filename)
         
         if radar_loc != None:
-            print "PyDart.dict2hdf:  radar location supplied:  lat: %f  lon: %f " %       
+            print "PyDart.dict2hdf:  radar location supplied:  lat: %f  lon: %f " %  \
                   (N.degrees(radar_loc[0]),N.degrees(radar_loc[1]))
         
         print
