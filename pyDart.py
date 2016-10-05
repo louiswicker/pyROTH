@@ -1438,7 +1438,8 @@ class pyDART():
             self.file(filename=filename)
         
         if radar_loc != None:
-            print "PyDart.dict2hdf:  radar location supplied:  lat: %f  lon: %f " % (N.degrees(radar_loc[0]),N.degrees(radar_loc[1]))
+            print "PyDart.dict2hdf:  radar location supplied:  lat: %f  lon: %f " %       
+                  (N.degrees(radar_loc[0]),N.degrees(radar_loc[1]))
         
         print
         print "!!! Warning from pyDart.dict2hdf !!!"
