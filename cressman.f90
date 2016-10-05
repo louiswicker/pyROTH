@@ -112,30 +112,30 @@
 ! 
 !# END python code
 !======================================================================================================'
-SUBROUTINE OBS_2_GRID2D(field, obs, xob, yob, xc, yc, ii, jj, hscale, missing, nobs, nx, ny)
+SUBROUTINE OBS_2_GRID2D(obs, xob, yob, xc, yc, ii, jj, hscale, missing, field, nobs, nx, ny)
                    
   implicit none
 
 ! Passed in variables
 
-  real(kind=8), INTENT(OUT) :: field(ny,nx)      ! 2D analysis passed back to calling routine
+  real(kind=8),    INTENT(OUT) :: field(ny,nx)      ! 2D analysis passed back to calling routine
       
-  integer,      INTENT(IN)  :: nx, ny, nobs      ! grid dimensions
-  real(kind=4), INTENT(IN)  :: xob(nobs)         ! x coords for each ob
-  real(kind=4), INTENT(IN)  :: yob(nobs)         ! y coords for each ob
-  real(kind=4), INTENT(IN)  :: obs(nobs)         ! obs 
-  real(kind=4), INTENT(IN)  :: ii(nobs)          ! nearest index to the x-point on grid for ob
-  real(kind=4), INTENT(IN)  :: jj(nobs)          ! nearest index to the x-point on grid for o 
-  real(kind=4), INTENT(IN)  :: xc(ny,nx)         ! coordinates corresponding to WRF model grid locations
-  real(kind=4), INTENT(IN)  :: yc(ny,nx)         ! coordinates corresponding to WRF model grid locations
-  real(kind=4), INTENT(IN)  :: hscale
-  real(kind=4), INTENT(IN)  :: missing
+  integer,         INTENT(IN)  :: nx, ny, nobs      ! grid dimensions
+  real(kind=4),    INTENT(IN)  :: xob(nobs)         ! x coords for each ob
+  real(kind=4),    INTENT(IN)  :: yob(nobs)         ! y coords for each ob
+  real(kind=4),    INTENT(IN)  :: obs(nobs)         ! obs 
+  integer(kind=8), INTENT(IN)  :: ii(nobs)          ! nearest index to the x-point on grid for ob
+  integer(kind=8), INTENT(IN)  :: jj(nobs)          ! nearest index to the x-point on grid for o 
+  real(kind=4),    INTENT(IN)  :: xc(nx)         ! coordinates corresponding to WRF model grid locations
+  real(kind=4),    INTENT(IN)  :: yc(ny)         ! coordinates corresponding to WRF model grid locations
+  real(kind=4),    INTENT(IN)  :: hscale
+  real(kind=4),    INTENT(IN)  :: missing
   
 ! Local variables
 
-  integer i, j, i0, j0, n, i0m, i0p, j0m, j0p, idx, jdx       ! loop variables
+  integer(kind=8) i, j, i0, j0, n, i0m, i0p, j0m, j0p, idx, jdx       ! loop variables
   
-  real(kind=8) dh, wgt
+  real(kind=8) dis, wgt, R2, dx, dy
   real(kind=4), allocatable, dimension(:,:) :: sum, wgt_sum
 
 ! DEBUG
@@ -151,45 +151,46 @@ SUBROUTINE OBS_2_GRID2D(field, obs, xob, yob, xc, yc, ii, jj, hscale, missing, n
   field(:,:)   = missing  
   wgt_sum(:,:) = 0.0
   sum(:,:)     = 0.0
+  
+  R2 = hscale**2
+  dx = xc(2) - xc(1)
+  dy = yc(2) - yc(1)
+  
+  idx = 1 + nint(1.25*hscale/dx)
+  jdx = 1 + nint(1.25*hscale/dy)
 
   IF( debug) THEN
     print *, "FORTRAN OBS_2_GRID2D:  dims  ", nx, ny, nobs
-    print *, "FORTRAN OBS_2_GRID2D:  dx, hscale", xc(1,2) - xc(1,1), hscale
-    print *, "FORTRAN OBS_2_GRID2D:  dy, hscale", yc(2,1) - yc(1,1), hscale
+    print *, "FORTRAN OBS_2_GRID2D:  dx, hscale", dx, hscale
+    print *, "FORTRAN OBS_2_GRID2D:  dy, hscale", dy, hscale
     print *, "FORTRAN OBS_2_GRID2D:    obs ", minval(obs), maxval(obs)
     print *, "FORTRAN OBS_2_GRID2D:  x-obs ", minval(xob), maxval(xob)
     print *, "FORTRAN OBS_2_GRID2D:  y-obs ", minval(yob), maxval(yob)
     print *, "FORTRAN OBS_2_GRID2D:  x-grid", minval(xc), maxval(xc)
     print *, "FORTRAN OBS_2_GRID2D:  y-grid", minval(yc), maxval(yc)
+    print *, "FORTRAN OBS_2_GRID2D:  i-index", minval(ii), maxval(ii)
+    print *, "FORTRAN OBS_2_GRID2D:  j-index", minval(jj), maxval(jj)
+    print *, "FORTRAN OBS_2_GRID2D:  i-width", idx
+    print *, "FORTRAN OBS_2_GRID2D:  j-width", jdx
   ENDIF
      
   DO n = 1,nobs
   
     i0 = ii(n)
     j0 = jj(n)
-    
-    if(i0 .eq. 1) cycle
-    if(j0 .eq. 1) cycle
-
-    if(i0 .eq. nx) cycle
-    if(j0 .eq. ny) cycle    
-
-    idx = 1+nint(hscale/abs(xc(j0,i0) - xc(j0,i0-1)))
-    jdx = 1+nint(hscale/abs(yc(j0,i0) - yc(j0-1,i0)))
-    
+        
     i0m = max(i0-idx,1)
     j0m = max(j0-jdx,1)
     
     i0p = min(i0+idx,nx)
     j0p = min(j0+jdx,ny)
-
+    
     DO i = i0m, i0p
       DO j = j0m, j0p
         
-          dh = ( (xc(j,i)-xob(n))**2 + (yc(j,i)-yob(n))**2) / hscale**2
-          wgt = (1.0 - dh) / (1.0 + dh)
-          
-          IF (wgt .gt. 0.0) THEN
+          dis = (xc(i) - xob(n))**2 + (yc(j)-yob(n))**2
+          wgt = (R2 - dis) / (R2 + dis)
+          IF (wgt > 0.0) THEN
             sum(j,i) = sum(j,i) + wgt*obs(n)
             wgt_sum(j,i) = wgt_sum(j,i) + wgt
           ENDIF  
@@ -197,9 +198,18 @@ SUBROUTINE OBS_2_GRID2D(field, obs, xob, yob, xc, yc, ii, jj, hscale, missing, n
       ENDDO    ! END J
     ENDDO     ! END I          
   ENDDO      ! END N
- 
+
   WHERE( wgt_sum > 0.01 ) field = sum / wgt_sum
   
+  
+  IF( debug ) THEN
+  
+    print *, "FORTRAN OBS_2_GRID2D:    wgts  ", minval(wgt_sum), maxval(wgt_sum)
+    print *, "FORTRAN OBS_2_GRID2D:    sum   ", minval(sum), maxval(sum)
+    print *, "FORTRAN OBS_2_GRID2D:    field ", minval(field), maxval(field)
+  
+  ENDIF
+ 
   deallocate(wgt_sum)
   deallocate(sum)
 

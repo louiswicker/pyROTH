@@ -32,6 +32,7 @@ import scipy.spatial
 import netCDF4 as ncdf
 
 from pyresample import kd_tree, utils, geometry
+import cressman
 import pyart
 from optparse import OptionParser
 
@@ -49,16 +50,16 @@ _plot_counties = True
 _grid_dict = {
               'grid_spacing_xy' : 2000.,   # meters
               'grid_radius_xy'  : 150000., # meters
-              'weight_func'     : 'Cressman',
+              'weight_func'     : 'GC',    # options are Cressman, GC, and Exp
               'ROI'             : 2000./0.707, # meters
               'projection'      : 'lcc', # map projection to use for gridded data
               'mask_vr_with_dbz': True,
               '0dbz_obtype'     : True,
-              'thin_zeros'      : 8,
+              'thin_zeros'      : 4,
               'halo_footprint'  : 3,
               'nthreads'        : 1,
               'max_height'      : 10000.,
-              'zero_heights'    : [3000.,7000.], 
+              'MRMS_zeros'      : [True, 3000.,7000.], 
              }
 
 # Dict for the standard deviation of obs_error for reflectivity or velocity (these values are squared when written to DART) 
@@ -97,7 +98,7 @@ class Gridded_Field(object):
 
 def dbz_masking(ref, thin_zeros=2):
 
-  if _grid_dict['0dbz_obtype'] == True:   # create a separate data type
+  if _grid_dict['MRMS_zeros'][0] == True:   # create a two layers of zeros based on composite ref
   
       print("\n Creating new 0DBZ levels for output\n")
       
@@ -123,7 +124,7 @@ def dbz_masking(ref, thin_zeros=2):
 
       new_z = np.ma.zeros((2, ny, nx), dtype=np.float32)
 
-      for n, z in enumerate(_grid_dict['zero_heights']):
+      for n, z in enumerate(_grid_dict['MRMS_zeros'][1:]):
           new_z[n] = z
                 
       ref.zero_dbz_zg = new_z
@@ -484,8 +485,13 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
                   (lons[j,i], lats[j,i], hgts[k,j,i], vert_coord))
       
           fi.write("kind\n")
-          
-          if kind == ObType_LookUp("REFLECTIVITY") and data[k,j,i] <= 0.1:
+
+# If we created zeros, and 0dbz_obtype == True, write them out as a separate data type
+# IF MRMS_zeros == True, we assume that is what you want anyway.
+
+          if (kind == ObType_LookUp("REFLECTIVITY") and data[k,j,i] <= 0.1) and \
+             (_grid_dict['0dbz_obtype'] or _grid_dict['MRMS_zeros'][0]):
+             
               fi.write("     %d     \n" % ObType_LookUp("RADAR_CLEARAIR_REFLECTIVITY") )
               nobs_clearair += 1
               o_error = obs_error[1]
@@ -683,14 +689,45 @@ def grid_data(volume, field):
   area_def    = utils.get_area_def(area_id, area_name, proj_id, proj4_args, x_size, y_size, area_extent)
   
   xg = area_def.proj_x_coords
-  yg = area_def.proj_y_coords
+  yg = area_def.proj_x_coords
   
   lons, lats = area_def.get_lonlats()
   
-# Cressman weighting function
+########################################################################
+#
+# Local weight function for pyresample
 
-  wf = lambda r: (roi**2 - r**2) / (roi**2 + r**2)
-  
+  def wf(z_in):
+    
+      if _grid_dict['weight_func'] == 'Cressman':
+          w    = np.zeros((z_in.shape), dtype=np.float64)
+          ww   = (roi**2 - z_in**2) / (roi**2 + z_in**2)
+          mask = (np.abs(z_in) <  roi)
+          w[mask] = ww[mask] 
+          return w
+          
+      elif _grid_dict['weight_func'] == 'test':
+          return np.ones((z_in.shape), dtype=np.float64)
+          
+      elif _grid_dict['weight_func'] == 'Exp':
+
+          return np.exp(-(z_in/roi)**2)
+          
+      else:  # Gasparoi and Cohen...
+
+          gc = np.zeros((z_in.shape), dtype=np.float64)
+          z = abs(z_in)
+          r = z / roi
+          z1 = (((( r/12.  -0.5 )*r  +0.625 )*r +5./3. )*r  -5. )*r + 4. - 2./(3.*r)
+          z2 = ( ( ( -0.25*r +0.5 )*r +0.625 )*r  -5./3. )*r**2 + 1.
+          m1 = np.logical_and(z >= roi, z < 2*roi)
+          m2 = (z <  roi)
+          gc[m1] = z1[m1]
+          gc[m2] = z2[m2]      
+          return gc
+
+########################################################################
+
 # Create a 3D array for analysis grid, the vertical dimension is the number of tilts
 
   new = np.ma.zeros((volume.nsweeps, grid_pts_xy, grid_pts_xy))
@@ -716,29 +753,43 @@ def grid_data(volume, field):
     
     x, y, z = volume.get_gate_x_y_z(n)
           
-    obs_def = geometry.SwathDefinition(lons=xob, lats=yob) 
+    omask = (sweep_data.mask == False)
+    
+    obs = sweep_data[omask].ravel()
+    xob = x[omask].ravel()
+    yob = y[omask].ravel()
 
-# Original method - but the object tree (obs_def) is created twice.  So this is a bit faster
-#
-#     tmp = kd_tree.resample_custom(obs_def, refl_sweep_data, \
-#                                        area_def, radius_of_influence=roi, reduce_data=True, \
-#                                        weight_funcs=wf, fill_value=np.nan, nprocs=nthreads)
+    ix = np.searchsorted(xg, xob)
+    iy = np.searchsorted(yg, yob)
+    
+#   tmp = cressman.cressman(xob, yob, obs, xg, yg, roi, np.nan)
 
-    input_index, output_index, index_array, distances = \
-          kd_tree.get_neighbour_info(obs_def, area_def, roi)
-                                       
-    tmp = kd_tree.get_sample_from_neighbour_info('custom', area_def.shape, sweep_data,  \
-                                                  input_index, output_index, index_array, \
-                                                  distance_array=distances, weight_funcs=wf, fill_value=np.nan)
-
-    if field == "reflectivity":
-      new[n,...] = np.ma.masked_where(tmp < _radar_parameters['min_dbz_analysis'], tmp)
+    if obs.size > 0:
+        tmp = cressman.obs_2_grid2d(obs, xob, yob, xg, yg, ix, iy, roi, -99999.)
+#         tmp  = tmp.transpose()
+        new_mask = (tmp == -99999.)
+        new[n] = np.ma.array(tmp, mask=new_mask)
     else:
-      new[n,...] = tmp
+        new[n] = np.ma.masked_all((grid_pts_xy, grid_pts_xy))
+        
+    if field == "reflectivity":
+      new[n].mask = np.logical_or(new[n].mask, new[n] < _radar_parameters['min_dbz_analysis'])
       
-    zgrid[n,...] = kd_tree.get_sample_from_neighbour_info('custom', area_def.shape, z,  \
-                                                  input_index, output_index, index_array, \
-                                                  distance_array=distances, weight_funcs=wf, fill_value=np.nan)
+# Create z-field
+
+    zobs= z.ravel()
+    xob = x.ravel()
+    yob = y.ravel()
+    
+    ix = np.searchsorted(xg, xob)
+    iy = np.searchsorted(yg, yob)
+
+
+#     tmp = cressman.cressman(xob, yob, zobs, xg, yg, roi, np.nan)
+    tmp = cressman.obs_2_grid2d(zobs, xob, yob, xg, yg, ix, iy, roi, -99999.)
+    new_mask = (tmp == -99999.)
+    zgrid[n] = np.ma.array(tmp, mask=new_mask)
+    
 
   print("\n %f secs to run pyresample analysis for all levels \n" % (timeit.clock()-tt))
 
@@ -1014,22 +1065,37 @@ if __name__ == "__main__":
   parser = OptionParser()
   parser.add_option("-d", "--dir",       dest="dname",     default=None,  type="string", \
                      help = "Directory of files to process")
+                     
   parser.add_option("-o", "--out",       dest="out_dir",     default="roth_files",  type="string", \
                      help = "Directory to place output files in")
+                     
   parser.add_option("-f", "--file",      dest="fname",     default=None,  type="string", \
                      help = "filename of NEXRAD level II volume to process")
+                     
   parser.add_option("-u", "--unfold",    dest="unfold",    default="phase",  type="string", \
                      help = "dealiasing method to use (phase or region, default = phase)")
+                     
   parser.add_option("-w", "--write",     dest="write",   default=False, \
                      help = "Boolean flag to write DART ascii file", action="store_true")
+                     
+  parser.add_option(     "--weight",     dest="weight",   default=None, type="string", \
+          help = "Function to use for the weight process, valid strings are:  Cressman, GC, Exp")
+          
+  parser.add_option(     "--dx",     dest="dx",   default=None, type="float", \
+          help = "Analysis grid spacing in meters for superob resolution")
+          
+  parser.add_option(     "--roi",     dest="roi",   default=None, type="float", \
+          help = "Radius of influence in meters for superob regrid")
+
   parser.add_option("-p", "--plot",      dest="plot",      default=-1,  type="int",      \
                      help = "Specify a number between 0 and # elevations to plot ref and vr in that co-plane")
+                     
   parser.add_option("-i", "--interactive", dest="interactive", default=False,  action="store_true",     \
                      help = "Boolean flag to specify to plot image to screen (when plot > -1).")  
+                     
   parser.add_option("-s", "--shapefiles", dest="shapefiles", default=None, type="string",    \
                      help = "Name of system env shapefile you want to add to the plots.")
-                     
-                   
+
   (options, args) = parser.parse_args()
   
   parser.print_help()
@@ -1073,21 +1139,31 @@ if __name__ == "__main__":
         out_filenames.append(strng) 
 
   if options.unfold == "phase":
-    print "\n pyROTH dealias_unwrap_phase unfolding will be used\n"
-    unfold_type = "phase"
+      print "\n pyROTH dealias_unwrap_phase unfolding will be used\n"
+      unfold_type = "phase"
   elif options.unfold == "region":
-    print "\n pyROTH dealias_region_based unfolding will be used\n"
-    unfold_type = "region"
+      print "\n pyROTH dealias_region_based unfolding will be used\n"
+      unfold_type = "region"
   else:
-    print "\n ***** INVALID OR NO VELOCITY DEALIASING METHOD SPECIFIED *****"
-    print "\n          NO VELOCITY UNFOLDING DONE...\n\n"
-    unfold_type = None
+      print "\n ***** INVALID OR NO VELOCITY DEALIASING METHOD SPECIFIED *****"
+      print "\n          NO VELOCITY UNFOLDING DONE...\n\n"
+      unfold_type = None
+    
+  if options.weight:
+       _grid_dict['weight_func'] = options.weight
+
+  if options.dx:
+       _grid_dict['grid_spacing_xy'] = options.dx
+       _grid_dict['ROI'] = options.dx / 0.707
+       
+  if options.roi:
+     _grid_dict['ROI'] = options.roi
 
   if options.plot < 0:
-    plot_grid = False
+      plot_grid = False
   else:
-    sweep_num = options.plot
-    plot_grid = True
+      sweep_num = options.plot
+      plot_grid = True
   
 # Read input file and create radar object
 
