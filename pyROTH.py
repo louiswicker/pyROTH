@@ -31,12 +31,12 @@ import scipy.spatial
 from optparse import OptionParser
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredText
 import netCDF4 as ncdf
+from pyproj import Proj
 
-from pyresample import geometry, utils
 import cressman
 import pyart
 
-import pylab as P  
+import pylab as plt  
 from mpl_toolkits.basemap import Basemap
 from pyart.graph import cm
 
@@ -45,6 +45,9 @@ _write_grid_indices = True
 
 # True here uses the basemap county database to plot the county outlines.
 _plot_counties = True
+
+# Need for coordinate projection
+truelat1, truelat2 = 30.0, 60.0
 
 # Parameter dict for Gridding
 _grid_dict = {
@@ -411,23 +414,7 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
 
   lons       = np.where(lons > 0.0, lons, lons+(2.0*np.pi))
 
-# if there is a zero dbz obs type, reform the data array 
-  try:
-      nz, ny, nx        = data.shape
-      new_data          = np.ma.zeros((nz+2, ny, nx), dtype=np.float32)
-      new_hgts          = np.ma.zeros((nz+2, ny, nx), dtype=np.float32)
-      new_data[0:nz]    = data[0:nz]
-      new_hgts[0:nz]    = hgts[0:nz]
-      new_data[nz]      = obs.zero_dbz
-      new_data[nz+1]    = obs.zero_dbz
-      new_hgts[nz:nz+2] = obs.zero_dbz_zg[0:2]
-      data = new_data
-      hgts = new_hgts
-      print("\n write_DART_ascii:  0-DBZ separate type added to reflectivity output\n")
-  except AttributeError:
-      print("\n write_DART_ascii:  No 0-DBZ separate type found\n")
-
-# platform information
+# extra information
 
   if kind == ObType_LookUp("VR"):
       platform_nyquist    = obs.nyquist
@@ -436,6 +423,21 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
       platform_hgt        = obs.radar_hgt
       platform_key        = 1
       platform_vert_coord = 3
+  else:
+      try:
+          nz, ny, nx        = data.shape
+          new_data          = np.ma.zeros((nz+2, ny, nx), dtype=np.float32)
+          new_hgts          = np.ma.zeros((nz+2, ny, nx), dtype=np.float32)
+          new_data[0:nz]    = data[0:nz]
+          new_hgts[0:nz]    = hgts[0:nz]
+          new_data[nz]      = obs.zero_dbz
+          new_data[nz+1]    = obs.zero_dbz
+          new_hgts[nz:nz+2] = obs.zero_dbz_zg[0:2]
+          data = new_data
+          hgts = new_hgts
+          print("\n write_DART_ascii:  0-DBZ separate type added to reflectivity output\n")
+      except AttributeError:
+          print("\n write_DART_ascii:  No 0-DBZ separate type found\n")
 
 # Use the volume mean time for the time of the volume
       
@@ -483,7 +485,7 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
           fi.write("loc3d\n")
 
           fi.write("    %20.14f          %20.14f          %20.14f     %d\n" % 
-                  (lons[j,i], lats[j,i], hgts[k,j,i], vert_coord))
+                  (lons[i], lats[j], hgts[k,j,i], vert_coord))
       
           fi.write("kind\n")
 
@@ -513,10 +515,10 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
               R_xy            = np.sqrt(obs.xg[i]**2 + obs.yg[j]**2)
               elevation_angle = beam_elv(R_xy, obs.zg[k,j,i])
 
-              platform_dir1 = (obs.xg[i] / R_xy) * np.deg2rad(elevation_angle)
-              platform_dir2 = (obs.yg[j] / R_xy) * np.deg2rad(elevation_angle)
+              platform_dir1 = (obs.xg[i] / R_xy) * np.cos(np.deg2rad(elevation_angle))
+              platform_dir2 = (obs.yg[j] / R_xy) * np.cos(np.deg2rad(elevation_angle))
               platform_dir3 = np.sin(np.deg2rad(elevation_angle))
-          
+              
               fi.write("platform\n")
               fi.write("loc3d\n")
 
@@ -528,8 +530,8 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
               fi.write("dir3d\n")
           
               fi.write("    %20.14f          %20.14f        %20.14f\n" % (platform_dir1, platform_dir2, platform_dir3) )
-              fi.write("     %20.14f     \n" % obs.nyquist[k] )
-              fi.write("     %d     \n" % platform_key )
+              fi.write("    %20.14f     \n" % obs.nyquist[k] )
+              fi.write("    %d          \n" % platform_key )
 
     # Done with special radial velocity obs back to dumping out time, day, error variance info
       
@@ -664,9 +666,23 @@ def grid_data(volume, field):
   
   grid_spacing_xy = _grid_dict['grid_spacing_xy']
   grid_length     =_grid_dict['grid_radius_xy']
-  grid_pts_xy     = 2*np.int(grid_length/grid_spacing_xy)
+  grid_pts_xy     = 1 + 2*np.int(grid_length/grid_spacing_xy)
   roi             = _grid_dict['ROI']
   nthreads        = _grid_dict['nthreads']
+  radar_lat       = volume.latitude['data'][0]
+  radar_lon       = volume.longitude['data'][0]
+
+# Set up coordinates for the plots
+
+
+#   map = Basemap(projection=_grid_dict['projection'], width=grid_length, \
+#                 height=grid_length, resolution='c', lat_1=30.,lat_2=60., lat_0=radar_lat,lon_0=radar_lon)  
+  
+  xg = -grid_length + grid_spacing_xy * np.arange(grid_pts_xy)
+  yg = -grid_length + grid_spacing_xy * np.arange(grid_pts_xy)
+  
+  map = Proj(proj='lcc', ellps='WGS84', datum='WGS84', lat_1=truelat1, lat_2=truelat2, lat_0=radar_lat, lon_0=radar_lon) 
+  lons, lats = map(xg, yg, inverse=True)
   
   print '\n Gridding radar data with following parameters'
   print ' ---------------------------------------------\n'
@@ -676,23 +692,12 @@ def grid_data(volume, field):
   print ' Radius of Influence:     {} km'.format(_grid_dict['ROI'])
   print ' Map projection:          {}'.format(_grid_dict['projection'])
   print ' Field to be gridded:     {}\n'.format(field) 
+  print ' Min / Max X grid loc:    {} <-> {} km\n'.format(0.001*xg[0], 0.001*xg[-1])
+  print ' Min / Max Y grid loc:    {} <-> {} km\n'.format(0.001*yg[0], 0.001*yg[-1])
+  print ' Min / Max Longitude:    {} <-> {} deg\n'.format(lons[0], lons[-1])
+  print ' Min / Max Latitude:      {} <->  {} deg\n'.format(lats[0], lats[-1])
   print ' ---------------------------------------------\n' 
-  
-  area_id = 'Analysis grid'
-  area_name = 'Analysis grid def'
-  proj_id = 'lcc'
-  radar_lat = volume.latitude['data'][0]
-  radar_lon = volume.longitude['data'][0]
-  proj4_args = '+proj=lcc +lat_0=%f +lon_0=%f +a=6371228.0 +units=m' % (radar_lat, radar_lon)  
-  x_size = grid_pts_xy
-  y_size = grid_pts_xy
-  area_extent = (-grid_length, -grid_length, grid_length, grid_length)
-  area_def    = utils.get_area_def(area_id, area_name, proj_id, proj4_args, x_size, y_size, area_extent)
-  
-  xg = area_def.proj_x_coords
-  yg = area_def.proj_x_coords
-  
-  lons, lats = area_def.get_lonlats()
+
   
 ########################################################################
 #
@@ -770,8 +775,11 @@ def grid_data(volume, field):
     else:
         new[n] = np.ma.masked_all((grid_pts_xy, grid_pts_xy))
         
+    print(" Number of valid grid points:  %d" % np.sum(new[n].mask==False))
+        
     if field == "reflectivity":
       new[n].mask = np.logical_or(new[n].mask, new[n] < _radar_parameters['min_dbz_analysis'])
+      print(" Number of valid reflectivity points:  %d" % np.sum(new[n].mask==False))
       
 # Create z-field
 
@@ -786,10 +794,9 @@ def grid_data(volume, field):
     new_mask = (tmp == -99999.)
     zgrid[n] = np.ma.array(tmp, mask=new_mask)
     
-
   print("\n %f secs to run superob analysis for all levels \n" % (timeit.clock()-tt))
 
-  return Gridded_Field("data_grid", field = field, data = new, proj4 = proj4_args, 
+  return Gridded_Field("data_grid", field = field, data = new, basemap = map, 
                        xg = xg, yg = yg, zg = zgrid,                   
                        lats = lats, lons = lons, elevations=elevations,
                        radar_lat = radar_lat, radar_lon=radar_lon, radar_hgt=volume.altitude['data'][0],
@@ -1058,8 +1065,8 @@ def write_radar_file(ref, vel, filename=None):
   V_yc    = rootgroup.createVariable('YC', 'f4', ('ny'), zlib=True, shuffle=True)
   V_el    = rootgroup.createVariable('EL', 'f4', ('nz'), zlib=True, shuffle=True)
 
-  V_lat   = rootgroup.createVariable('LATS', 'f4', ('ny','nx'), zlib=True, shuffle=True)
-  V_lon   = rootgroup.createVariable('LONS', 'f4', ('ny','nx'), zlib=True, shuffle=True)
+  V_lat   = rootgroup.createVariable('LATS', 'f4', ('ny'), zlib=True, shuffle=True)
+  V_lon   = rootgroup.createVariable('LONS', 'f4', ('nx'), zlib=True, shuffle=True)
   V_hgt   = rootgroup.createVariable('HGTS', 'f4', ('nz', 'ny', 'nx'), zlib=True, shuffle=True)
 
 # Write variables
