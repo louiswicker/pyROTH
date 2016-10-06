@@ -22,7 +22,6 @@ from scipy import interpolate
 from mpl_toolkits.basemap import Basemap
 from mpl_toolkits.axes_grid import AxesGrid
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
-from mpl_toolkits.axes_grid1.anchored_artists import AnchoredText
 
 _debug               = True
 _verbose             = True
@@ -50,7 +49,7 @@ hgt_bound_box     = (0.0,10000.0)   # max and min heights to output
 #==========================================================================================
 # PARAMETERS FOR MAP PROJECTIONS
 
-map_projection     = 'latlon'  # valid projects are lambert conformal ['lcc'], and latlon ['latlon']
+map_projection     = 'lcc'  # valid projects are lambert conformal ['lcc'], and latlon ['latlon']
 truelat1, truelat2 = 30.0, 60.0
 
 #==========================================================================================
@@ -1361,7 +1360,8 @@ class pyDART():
                 row['platform_key']      = long(fi.readline())
 
                 row['z']                           = row['height'] - row['platform_height']
-                row['x'], row['y'], row['azimuth'] = dll_2_dxy(row['platform_lat'], row['lat'], row['platform_lon'], row['lon'], azimuth=True, degrees=True)
+                row['x'], row['y'], row['azimuth'] = dll_2_dxy(row['platform_lat'], row['lat'], \
+                                                     row['platform_lon'], row['lon'], azimuth=True, degrees=True)
 
                 elevation_angle = N.arcsin(row['platform_dir3']) 
 
@@ -2284,8 +2284,8 @@ def main(argv=None):
     parser.add_option(      "--hdf2ascii",   dest="hdf2ascii", default=False, help = "Boolean flag to convert HDF5 DART file to ascii DART file",  action="store_true")
     parser.add_option(      "--nc2hdf",      dest="nc2hdf",    type="string", help = "File name of file or directory to convert netcdf W2 files to HDF5-DART")
     parser.add_option(      "--mrms",        dest="mrms",      type="string", help = "File name of file or directory to convert netCDF MRMS files to HDF5-DART")
-    parser.add_option(      "--start",       dest="start",     type="int",    help = "Start time of search in YYYYMMDDHHMMSS")
-    parser.add_option(      "--end",         dest="end",       type="int",    help = "End time of search in YYYYMMDDHHMMSS")
+    parser.add_option(      "--start",       dest="start",     type="string", help = "Start time of search in YYYY,MM,DD,HH,MM,SS")
+    parser.add_option(      "--end",         dest="end",       type="string", help = "End time of search in YYYY,MM,DD,HH,MM,SS")
     parser.add_option(      "--getDartTimes",dest="DartTimes", default=False, help = "Boolean flag to dump out observations times as in getDARTtimes", action="store_true")
     parser.add_option(      "--condition",   dest="condition", default=None,  type = "string", help = "string having following syntax for searches:  '( z1 < height < z2 )'" )
     parser.add_option(      "--variable",    dest="variable",  default=None,  type = "string", help = "String containing the type of observation to list information:  VR, DBZ")
@@ -2351,23 +2351,29 @@ def main(argv=None):
             sys.exit(1)
     
     if options.start != None:           # Convert start flag to tuple for search
-        char = str(options.start)
-        if len(char) != 14:
-            print "pyDart:  Incorrect date/time format for search start (need YYYYMMDDHHMMSSS)"
+        char = options.start.split(",")
+        if len(char) < 5:
+            print "pyDart:  Incorrect date/time format for search start (need YYYY,MM,DD,HH,MM,SS)"
             print "pyDart:  submitted arg = ", char, " Exiting program"
             sys.exit(1)
-        start =  (int(char[0:4]), int(char[4:6]), int(char[6:8]), int(char[8:10]), int(char[10:12]), int(char[12:14]))
+        elif len(char) == 5:
+           start =  (int(char[0]), int(char[1]), int(char[2]), int(char[3]), int(char[4]),00)
+        else:
+           start =  (int(char[0]), int(char[1]), int(char[2]), int(char[3]), int(char[4]), int(char[5]))
         if options.end == None:
             end = (2040,01,01,00,00,00)
         options.search == True
     
     if options.end != None:              # Convert end flag to tuple for search
-        char = str(options.end)
-        if len(char) != 14:
-            print "pyDart:  Incorrect date/time format for search start (need YYYYMMDDHHMMSSS)"
+        char = options.end.split(",")
+        if len(char) < 5:
+            print "pyDart:  Incorrect date/time format for search end (need YYYY,MM,DD,HH,MM,SS)"
             print "pyDart:  submitted arg = ", char, " Exiting program"
             sys.exit(1)
-        end =  (int(char[0:4]), int(char[4:6]), int(char[6:8]), int(char[8:10]), int(char[10:12]), int(char[12:14]))
+        elif len(char) == 5:
+           end =  (int(char[0]), int(char[1]), int(char[2]), int(char[3]), int(char[4]),00)
+        else:
+           end =  (int(char[0]), int(char[1]), int(char[2]), int(char[3]), int(char[4]), int(char[5]))
         if options.start == None:
             start = (1970,01,01,00,00,00)
         options.search == True
@@ -2376,7 +2382,7 @@ def main(argv=None):
         start = (1970,01,01,00,00,00)
         end   = (2040,01,01,00,00,00)
         options.search == True
-    
+            
     loc =[]
     if options.xloc != None:
         xloc = list(options.xloc)        # convert to list
