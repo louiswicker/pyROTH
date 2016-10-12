@@ -398,9 +398,6 @@ def chk_pyDart_version(h5file, verbose = True):
             print "/\/\/\/\/\/\/\/\\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/"
             print
             return
-        if not checked_file_version:
-            checked_file_version = True
-            return
 
 #===============================================================================
 def open_pyDart_file(filename, return_root=False, verbose = None, append=False):
@@ -905,6 +902,7 @@ class pyDART():
         z =  N.array(z, dtype="float32")
         
         el = N.round(data['elevation'].mean(),2)
+
         print "Creating grid for elevation:  %f" % data['elevation'].mean()
         
 # Now, call grid to grid some data
@@ -912,6 +910,7 @@ class pyDART():
         xi, yi, zi = self.grid(x, y, z, dx=0.02, dy=0.02)
 
         fig = P.figure(figsize = (12,10))
+
         ax = fig.add_subplot(111)
         
         sw_lon = xi.min()
@@ -930,11 +929,16 @@ class pyDART():
 
         if variable.upper() == "DBZ" or variable.upper() == "REFLECTIVITY":
             clevels = N.arange(0,75,5)
-            zimask = N.where( zi > 10., zi, N.nan)
-            plt  = map.contourf(xx, yy, zimask, clevels, colors=cmap)
+            zi   = N.ma.masked_less( zi, 10.0 )
+            plt  = map.contourf(xx, yy, zi, clevels, colors=cmap)
             cbar = map.colorbar(plt,location='bottom',pad=0.40)
             cbar.ax.set_title("dBZ")
             P.title("Reflectivity at   %s  EL:  %5.2f" % (time, el))
+
+# Plot 0's values as points.
+
+            r_mask = (zi.mask == True)
+            map.scatter(xx[r_mask], yy[r_mask], c='k', s = 1., alpha=0.5)
 
         elif variable.upper() == "0DBZ" or variable.upper() == "CLEAR_AIR_REFLECTIVITY":
             clevels = N.arange(0,10,5)
@@ -1096,19 +1100,19 @@ class pyDART():
             utime  = data['utime']
             lat    = data['lat']
             lon    = data['lon']
-            x      = N.where(data['x'] != _missing, data['x']/1000., _missing)
-            y      = N.where(data['y'] != _missing, data['y']/1000., _missing)
-            z      = N.where(data['z'] != _missing, data['z']/1000., _missing)
-            az     = N.where(data['azimuth']   != _missing, data['azimuth'],   _missing)
-            el     = N.where(data['elevation'] != _missing, data['elevation'], _missing)
+            x      = N.ma.masked_equal(data['x'], 9999.)
+            x      = N.ma.masked_equal(data['x'], 9999.)
+            y      = N.ma.masked_equal(data['y'], 9999.)
+            z      = N.ma.masked_equal(data['z'], _missing)
+            z      = N.ma.masked_equal(data['z'], 9999.)
+            az     = N.ma.masked_equal(data['azimuth'], _missing)
+            el     = N.ma.masked_equal(data['elevation'], _missing)
 
             x      = N.sort(N.unique(x))
-            dx     = N.median(N.diff(x))
-            if dx < 0.001: dx = N.max(N.diff(x))
+            dx     = N.diff(x)
             
             y      = N.sort(N.unique(y))
-            dy     = N.median(N.diff(y))
-            if dy < 0.001: dy = N.max(N.diff(y))
+            dy     = N.diff(y)
             
             z      = N.sort(z)
             dz     = N.diff(z)
@@ -1116,13 +1120,15 @@ class pyDART():
             print
             print "%s            Max/Min:   %10.4f   %10.4f  " % (variable, value.max(), value.min())
             print "%s         Mean/stdev:   %10.4f   %10.4f  " % (variable, value.mean(), value.std())
-            print "%s  Min/Max    X (km):   %10.4f   %10.4f  DX(km): %5.2f (values are approximate)" % (variable,x.min(), x.max(), dx)
-            print "%s  Min/Max    Y (km):   %10.4f   %10.4f  DY(km): %5.2f (values are approximate)" % (variable,y.min(), y.max(), N.median(dy))
-            print "%s  Min/Max    Z (km):   %10.4f   %10.4f" % (variable,z.max(), z.min())
-            print "%s  Min/Max   Azimuth:   %10.4f   %10.4f" % (variable, az.max(), az.min())
-            print "%s  Min/Max Elevation:   %10.4f   %10.4f" % (variable, el.max(), el.min())
-            print "%s  Min/Max  Latitude:   %10.4f   %10.4f" % (variable, lat.max(), lat.min())
-            print "%s  Min/Max Longitude:   %10.4f   %10.4f" % (variable, lon.max(), lon.min())
+            print "%s  Max/Min    X (m):    %10.1f   %10.1f  " % (variable,x.min(), x.max())
+            print "%s  Max/Min   DX (m):    %10.1f   %10.1f  STD: %10.4f " % (variable,dx.max(), dx.min(), dx.std())
+            print "%s  Max/Min    Y (m):    %10.1f   %10.1f  " % (variable,y.min(), y.max())
+            print "%s  Max/Min   DY (m):    %10.1f   %10.1f  STD: %10.4f " % (variable,dy.max(), dy.min(), dy.std())
+            print "%s  Max/Min    Z (m):    %10.1f   %10.1f" % (variable, z.max(), z.min())
+            print "%s  Max/Min   Azimuth:   %10.4f   %10.4f" % (variable, az.max(), az.min())
+            print "%s  Max/Min Elevation:   %10.4f   %10.4f" % (variable, el.max(), el.min())
+            print "%s  Max/Min  Latitude:   %10.4f   %10.4f" % (variable, lat.max(), lat.min())
+            print "%s  Max/Min Longitude:   %10.4f   %10.4f" % (variable, lon.max(), lon.min())
             print
 
         else:
