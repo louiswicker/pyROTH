@@ -1,70 +1,127 @@
-# Author: Jonathan J. Helmus (jhelmus@anl.gov)
-# License: BSD 3 clause
+#!/usr/bin/env python
 
-import scipy
-import copy
 import matplotlib.pyplot as plt
 import pyart
 import matplotlib
 import pylab as P
-from scipy import signal
 import numpy as N
-import math
+import numpy as np
 import sys
-import netCDF4
+import glob
 from optparse import OptionParser
-from netCDF4 import num2date
-from netcdftime import utime
 import os
 import ctables
+import time as timeit
+
 from mpl_toolkits.basemap import Basemap
 from pyproj import Proj
-import time as timeit
-import numpy.ma as ma
-import netCDF4 as ncdf
-import glob
-#from Plotting import shapefiles
-shapefiles = None
 
 #---------------------------------------------------------------------------------------------------
-
-
-# Lambert conformal stuff
-tlat1 = 35.3500
-tlat2 = 35.8900
-cen_lat = 35.6200
-cen_lon = -97.9120
-
+#
+# Useful defaults if you are doing a lot of plot and dont want to put them on the command line
+#
 _counties = True
 _states   = False
 
+_shapefiles = None
+_level      = 0
+
 # Colorscale information
-ref_scale = (0.,74.)
-vr_scale  = (-40.,40.)
+_ref_scale = (0.,74.)
+_vr_scale  = (-40.,40.)
+
+# Colortables
+_ref_ctable = ctables.NWSRef
+_vr_ctable  = ctables.Carbone42
 
 # Range rings in km
-range_rings = [25, 50, 75, 100, 125] 
+_plot_RangeRings = False
+_range_rings = [25, 50, 75, 100, 125] 
 
-x_plot_range = [-150000., 150000.]
-y_plot_range = [-150000., 150000.] 
+# How much to plot
+_max_range    = 150000.
+_x_plot_range = [-_max_range, _max_range]
+_y_plot_range = [-_max_range, _max_range] 
+_lat_lines    = False
+_lon_lines    = False
 
-# Debug print stuff....
+# Output file format
+_file_type = "png"
+
+# this turns on some timing info
 debug = False
 
-#======================= EXAMPLE for Container CLASS ====================================
-# class data_bin(object):
-#     pass
-#    new_obj = data_bin()
-#    new_obj.fields = {}
-#    new_obj.loc = copy.deepcopy(display_obj.loc)
-#    new_obj.x = copy.deepcopy(display_obj.x)
-#    new_obj.y = copy.deepcopy(display_obj.y)
+########################################################################
+# Volume Prep:  Threshold data and unfold velocities
 
+def volume_prep(radar, unfold_type="phase"):
+          
+# Mask data beyond max_range
 
+  max_range_gate = np.abs(radar.range['data'] - _max_range).argmin()
+  radar.fields['reflectivity']['data'][:,max_range_gate:] = np.ma.masked
+  radar.fields['velocity']['data'][:,max_range_gate:] = np.ma.masked
+
+# Filter based on masking, dBZ threshold, and invalid gates
+
+  gatefilter = pyart.correct.GateFilter(radar)
+  gatefilter.exclude_invalid('velocity')
+  gatefilter.exclude_invalid('reflectivity')
+  gatefilter.exclude_masked('velocity')
+  gatefilter.exclude_masked('reflectivity')
+
+# Dealias the velocity data
+
+  if unfold_type == "phase":
+    dealiased_radar = pyart.correct.dealias_unwrap_phase(radar, unwrap_unit='sweep', 
+                                   nyquist_vel=None, check_nyquist_uniform=True, 
+                                   gatefilter=gatefilter, rays_wrap_around=None, 
+                                   keep_original=False, set_limits=True, 
+                                   vel_field='velocity', corr_vel_field=None, 
+                                   skip_checks=False)
+                                   
+    radar.add_field('unfolded velocity', dealiased_radar)
+    
+    return True
+                                   
+
+  if unfold_type == "region":
+    dealiased_radar = pyart.correct.dealias_region_based(radar, interval_splits=3, 
+                                   interval_limits=None, skip_between_rays=100, 
+                                   skip_along_ray=100, centered=True, 
+                                   nyquist_vel=None, check_nyquist_uniform=True, 
+                                   gatefilter=False, rays_wrap_around=None, 
+                                   keep_original=False, set_limits=True, 
+                                   vel_field='velocity', corr_vel_field=None)
+     
+    radar.add_field('unfolded velocity', dealiased_radar)
+
+    return True
+    
+#  Must implement function to get sounding data or specify previously unfolded radar 
+#       volume to use PyART 4DD method. See PyART docs for more info.
+#  if unfold_type == "4dd":  
+#    snd_hgts,sngd_spds,snd_dirs = get_sound_data()
+#    dealiased_radar = pyart.correct.dealias_fourdd(radar, last_radar=None, 
+#                              sounding_heights=snd_hgts, sounding_wind_speeds=snd_spds, 
+#                              sounding_wind_direction=snd_dirs, gatefilter=False, 
+#                              filt=1, rsl_badval=131072.0, 
+#                              keep_original=False, set_limits=True, 
+#                              vel_field='velocity', corr_vel_field=None, 
+#                              last_vel_field=None, debug=False, 
+#                              max_shear=0.05, sign=1)
+
+#   copies reflectivity data to a variable that doesn't exceed the 8 character variable name limitation in OPAWS 
+#   radar.add_field_like('reflectivity', 'REF',
+#                        radar.fields['reflectivity']['data'].copy())
+
+# If it gets here, there was a problem
+
+  return False
 #===============================================================================
 def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, ticks = True, 
               resolution='c',area_thresh = 10., shape_env = False, 
-              counties=False, states = False, lat_lines=True, lon_lines=True, 
+              counties=False, states = False, lat_lines=_lat_lines, lon_lines=_lon_lines, 
               pickle = False, ax=None):
 
    tt = timeit.clock()
@@ -118,7 +175,11 @@ def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, ticks = True,
    return map
 
 #############################################################################################
-def create_ppi_map(radar, xr, yr, plot_range_rings=True, ax=None, **kwargs):
+def create_ppi_map(radar, xr, yr, plot_range_rings=_plot_RangeRings, ax=None, **kwargs):
+
+# Lambert conformal defaults
+   tlat1 = 35.3500
+   tlat2 = 35.8900
 
    radar_lon = radar.longitude['data'][0]
    radar_lat = radar.latitude['data'][0]
@@ -139,7 +200,7 @@ def create_ppi_map(radar, xr, yr, plot_range_rings=True, ax=None, **kwargs):
 
    if plot_range_rings:
       angle = N.linspace(0., 2.0 * N.pi, 360)
-      for ring in range_rings:
+      for ring in _range_rings:
          xpts = radar_x + ring * 1000. * N.sin(angle)
          ypts = radar_y + ring * 1000. * N.cos(angle)
          map.plot(xpts, ypts, color = 'gray', alpha = 0.5, linewidth = 1.0, ax=ax)  
@@ -147,14 +208,14 @@ def create_ppi_map(radar, xr, yr, plot_range_rings=True, ax=None, **kwargs):
    return map, xmap, ymap, radar_x, radar_y
    
 #############################################################################################
-def plot_ppi_map(radar, field, level= 0, cmap=ctables.Carbone42, vRange=None, var_label = None, \
+def plot_ppi_map(radar, field, level = 0, cmap=ctables.Carbone42, vRange=None, var_label = None, \
                  plot_range_rings=True, ax=None, **kwargs):
                  
    start = radar.get_start(level)
    end   = radar.get_end(level) + 1
    data  = radar.fields[field]['data'][start:end]
    
-# Fix super-res issue?
+# Fix super-res blank velocity field to next scan level...
 
    if N.sum(data.mask == True) == data.size:
       start = radar.get_start(level+1)
@@ -164,91 +225,162 @@ def plot_ppi_map(radar, field, level= 0, cmap=ctables.Carbone42, vRange=None, va
    xr    = radar.gate_x['data'][start:end] 
    yr    = radar.gate_y['data'][start:end] 
    
-   map, x, y, radar_x, radar_y = create_ppi_map(radar, xr, yr, plot_range_rings=True, ax=ax, **kwargs)
+   map, x, y, radar_x, radar_y = create_ppi_map(radar, xr, yr, ax=ax, **kwargs)
    
    plot = map.pcolormesh(x, y, data, cmap=cmap, vmin = vRange[0], vmax = vRange[1], ax=ax)
    cbar = map.colorbar(plot, location = 'right', pad = '3%')
    
-   ax.set_xlim(radar_x+x_plot_range[0],radar_x+x_plot_range[1])
-   ax.set_ylim(radar_y+y_plot_range[0],radar_y+y_plot_range[1])
-   
-   if var_label:
-       cbar.set_label(var_label, fontweight='bold')
-   else:
-       cbar.set_label(field, fontweight='bold')
+   ax.set_xlim(radar_x+_x_plot_range[0],radar_x+_x_plot_range[1])
+   ax.set_ylim(radar_y+_y_plot_range[0],radar_y+_y_plot_range[1])
 
    time = radar.time['units'].split(" ")[2]
-   time = time.replace("-","_")
+#time = time.replace("-","_")
    time = time.replace("T"," ")
    el   = radar.elevation['data'][level]
    
-   title_string = "%s    %s    EL:  %4.2f deg" % (field, time, el)
+   if var_label != None:
+       cbar.set_label(var_label, fontweight='bold')
+       title_string = "%s    EL:  %4.2f deg" % (var_label, el)
+   else:
+       cbar.set_label(field, fontweight='bold')
+       title_string = "%s    EL:  %4.2f deg" % (field,  el)
 
+   P.suptitle(time, fontsize=16)
    P.title(title_string)
    
    print("\nCompleted plot for %s" % field)
      
    return 
      
-#############################################################################################
-# MAIN program
+########################################################################
+# Main function
 
-filenames = ["/Users/Louis.Wicker/Software/PythonProjects/pyROTH/KTLX/KTLX20130520_205045_V06"]
+if __name__ == "__main__":
 
-print filenames[0]
-print filenames[-1]
+  print ' ================================================================================'
+  print ''
+  print ''
+  print '                   BEGIN PROGRAM pyPlot_lvl2                    '
+  print ''
 
-output_dir = "testimages"
+  parser = OptionParser()
+  parser.add_option("-d", "--dir",       dest="dname",     default=None,  type="string", \
+                    help = "Directory of files to process")
+                 
+  parser.add_option("-o", "--out",       dest="out_dir",     default="images",  type="string", \
+                    help = "Directory to place png files in")
+                 
+  parser.add_option("-f", "--file",      dest="fname",     default=None,  type="string", \
+                    help = "filename of NEXRAD level II volume to process")
 
-out_filenames = []
-
-if filenames[0][-3:] == "V06":
-  for item in filenames:
-    strng = os.path.basename(item)[0:17]
-    strng = strng[0:4] + "_" + strng[4:]
-    strng = os.path.join(output_dir, strng)
-    out_filenames.append(strng)
-
-for n, filename in enumerate(filenames):
-
-  fig, axes = P.subplots(1, 2, sharey=True, figsize=(15,6))
+  parser.add_option("-l", "--level",      dest="level",     default=0,  type="int", \
+                    help = "Tilt index of NEXRAD sweep--> 0: 0.5 degrees")
+                 
+                 
+  parser.add_option("-u", "--unfold",    dest="unfold",    default="phase",  type="string", \
+                    help = "dealiasing method to use (phase or region, default = phase)")
   
-  radar = pyart.io.read_nexrad_archive(filename)
-
-  outfile  = plot_ppi_map(radar, "reflectivity", vRange=ref_scale, cmap=ctables.NWSRef, \
-                          ax=axes[0], var_label='Reflectivity', shape_env=shapefiles)
-
-  outfile  = plot_ppi_map(radar, "velocity", vRange=(-40,40), cmap=ctables.Carbone42, ax=axes[1], 
-                          var_label='Radial Velocity', shape_env=shapefiles)
-
-  fig.subplots_adjust(left=0.06, right=0.90, top=0.90, bottom=0.1, wspace=0.35)
+  parser.add_option("-i", "--interactive", dest="interactive", default=False,  action="store_true",     \
+                     help = "Boolean flag to plot image to screen")  
+                     
+  parser.add_option("-s", "--shapefiles", dest="shapefiles", default=None, type="string",    \
+                     help = "Name of system env shapefile you want to add to the plots.")
+                     
+  (options, args) = parser.parse_args()
   
-#   plot range rings at 10, 20, 30 and 40km
-#   display.plot_range_rings([10, 20, 30, 40])
-#   
-#   plots cross hairs
-#   display.plot_line_xy(np.array([-40000.0, 40000.0]), np.array([0.0, 0.0]),
-#                        line_style='k-')
-#   display.plot_line_xy(np.array([0.0, 0.0]), np.array([-20000.0, 200000.0]),
-#                        line_style='k-')
-# 
-# Indicate the radar location with a point
-#   display.plot_point(radar.longitude['data'][0], radar.latitude['data'][0])
+  print ''
+  print ' ================================================================================'
+  
+  if not os.path.exists(options.out_dir):
+    os.mkdir(options.out_dir)
 
-  print("\n Saving file:  %s.png" % (out_filenames[n]))
+  out_filenames = []
+  in_filenames  = []
 
-  P.savefig("%s.png" % out_filenames[n], format="png", dpi=300)
+  if options.dname == None:
+          
+    if options.fname == None:
+      print "\n\n ***** USER MUST SPECIFY NEXRAD LEVEL II (MESSAGE 31) FILE OR DIRECTORY! *****"
+      print "\n                         EXITING!\n\n"
+      parser.print_help()
+      print
+      sys.exit(1)
+      
+    else:
+      in_filenames.append(os.path.abspath(options.fname))
+      strng = os.path.basename(in_filenames[0])[0:-3]
+      strng = strng[0:4] + "_" + strng[4:]
+      strng = os.path.join(options.out_dir, strng)
+      out_filenames.append(strng) 
 
-  P.show()
-# 
-# 
-# # 		outfile  = plot_ppi_map(display_obj, "reflectivity", vRange=ref_scale, cmap=ctables.NWSRef, \
-# # 		                        ax=axes[0], var_label='Reflectivity', shape_env=shapefiles)
-# # 
-# # 		outfile  = plot_ppi_map(display_obj, "velocity", vRange=(-40,40), cmap=ctables.Carbone42, ax=axes[1], 
-# # 		                        var_label='Radial Velocity', shape_env=shapefiles)
-# # 
-# # 		
-# 
-#P.show()
+  else:
+    in_filenames = glob.glob("%s/*" % os.path.abspath(options.dname))
+    print("\n pyROTH:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dname))
+    print("\n pyROTH:  First file is %s\n" % (in_filenames[0]))
+    print("\n pyROTH:  Last  file is %s\n" % (in_filenames[-1]))
 
+    if in_filenames[0][-3:] == "V06":
+      for item in in_filenames:
+        strng = os.path.basename(item)[0:17]
+        strng = strng[0:4] + "_" + strng[4:]
+        strng = os.path.join(output_dir, strng)
+        out_filenames.append(strng)
+
+  if options.unfold == "phase":
+      print "\n pyROTH dealias_unwrap_phase unfolding will be used\n"
+      unfold_type = "phase"
+  elif options.unfold == "region":
+      print "\n pyROTH dealias_region_based unfolding will be used\n"
+      unfold_type = "region"
+  else:
+      print "\n ***** INVALID OR NO VELOCITY DEALIASING METHOD SPECIFIED *****"
+      print "\n          NO VELOCITY UNFOLDING DONE...\n\n"
+      unfold_type = None
+      
+  if options.shapefiles:
+      shapefiles = options.shapefiles
+  else:
+      shapefiles = _shapefiles
+
+#===========================
+# Main processing loop....
+      
+  for n, filename in enumerate(in_filenames):
+
+    fig, axes = P.subplots(1, 2, sharey=True, figsize=(15,6))
+  
+    volume = pyart.io.read_nexrad_archive(filename)
+    
+  # unfolding can fail if the data are not written quite write - instead of quiting, try to unfold with region method
+    try:
+        gatefilter = volume_prep(volume, unfold_type=unfold_type) 
+        vr_field = "unfolded velocity"
+        vr_label = "Unfolded Radial Velocity"
+    except:
+        try:
+            print("\n ----> Phase unfolding method has failed!! Trying region unfolding method\n")
+            gatefilter = volume_prep(volume, unfold_type="region")
+            vr_field = "unfolded velocity"
+            vr_label = "Unfolded Radial Velocity"
+        except:
+            print("\n ----> Both unfolding methods have failed!! Turning off unfolding\n\n")
+            unfold_type = None
+            vr_field = "velocity"
+            vr_label = "Radial Velocity"
+
+    outfile  = plot_ppi_map(volume, "reflectivity", level=options.level, vRange=_ref_scale, cmap=_ref_ctable, \
+                            ax=axes[0], var_label='Reflectivity', shape_env=shapefiles)
+
+    outfile  = plot_ppi_map(volume, vr_field, level=options.level, vRange=_vr_scale, cmap=_vr_ctable, ax=axes[1], 
+                            var_label=vr_label, shape_env=shapefiles)
+
+    fig.subplots_adjust(left=0.06, right=0.90, top=0.90, bottom=0.1, wspace=0.35)
+    
+    outfile = "%s%4.2fDEG" % (out_filenames[n], volume.elevation['data'][options.level])
+  
+    print("\n Saving file:  %s.png" % (outfile))
+
+    P.savefig("%s.%s" % (outfile, _file_type), format=_file_type, dpi=300)
+
+    if options.interactive:
+        P.show()
