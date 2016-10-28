@@ -866,7 +866,7 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
   else:
        filename = "VR_RF_%2.2d_%s.png" % (sweep, fsuffix.split("/")[1])
 
-  fig, (ax1, ax2) = P.subplots(1, 2, sharey=True, figsize=(15,8))
+  fig, (ax1, ax2) = plt.subplots(1, 2, sharey=True, figsize=(15,8))
   
 # Set up coordinates for the plots
   bgmap = Basemap(projection=_grid_dict['projection'], width=xwidth, \
@@ -959,11 +959,11 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
   time_start = ncdf.num2date(ref.time['data'][0], ref.time['units'])
   time_text = time_start.isoformat().replace("T"," ")
   title = '\nDate:  %s   Time:  %s Z   Elevation:  %2.2f deg' % (time_text[0:10], time_text[10:19], ref.elevations[sweep])
-  P.suptitle(title, fontsize=24)
+  plt.suptitle(title, fontsize=24)
   
-  P.savefig(filename)
+  plt.savefig(filename)
   
-  if interactive:  P.show()
+  if interactive:  plt.show()
 
 #####################################################################################################
 def write_radar_file(ref, vel, filename=None):
@@ -1160,8 +1160,8 @@ if __name__ == "__main__":
       
     else:
       in_filenames.append(os.path.abspath(options.fname))
-      strng = os.path.basename(in_filenames[0])[0:17]
-      strng = strng[0:4] + "_" + strng[4:]
+      strng = os.path.basename(in_filenames[0])[0:-3]
+      strng = strng[0:5] + "_" + strng[5:]
       strng = os.path.join(options.out_dir, strng)
       out_filenames.append(strng) 
 
@@ -1177,6 +1177,15 @@ if __name__ == "__main__":
         strng = strng[0:4] + "_" + strng[4:]
         strng = os.path.join(options.out_dir, strng)
         out_filenames.append(strng) 
+        
+    if in_filenames[0][-3:] == ".nc":
+      for item in in_filenames:
+        strng = os.path.basename(item).split(".")[0:2]
+        print strng
+        strng = strng[0] + "_" + strng[1]
+        strng = os.path.join(options.out_dir, strng)
+        out_filenames.append(strng) 
+        print strng
 
   if options.unfold == "phase":
       print "\n pyROTH dealias_unwrap_phase unfolding will be used\n"
@@ -1215,11 +1224,15 @@ if __name__ == "__main__":
       print '\n Writing: {}\n'.format(out_filenames[n])
    
       tim0 = timeit.time()
-  
-      volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
-                                            additional_metadata=None, file_field_names=False, 
-                                            delay_field_loading=False, 
-                                            station=None, scans=None, linear_interp=True)
+      
+      if fname[-3:] == ".nc":
+        volume = pyart.io.read_cfradial(fname, field_names={"REF_edit":"reflectivity", "VEL_edit":"velocity"})
+      else:
+        volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
+                                              additional_metadata=None, file_field_names=False, 
+                                              delay_field_loading=False, 
+                                              station=None, scans=None, linear_interp=True)
+
       pyROTH_io_cpu = timeit.time() - tim0
   
       print "\n Time for reading in LVL2: {} seconds".format(pyROTH_io_cpu)
@@ -1229,7 +1242,7 @@ if __name__ == "__main__":
 # unfolding can fail if the data are not written quite write - instead of quiting, try to unfold with region method
       try:
           gatefilter = volume_prep(volume, unfold_type=unfold_type) 
-      except ValueError:
+      except:
           try:
               print("\n ----> Phase unfolding method has failed!! Trying region unfolding method\n")
               gatefilter = volume_prep(volume, unfold_type="region")
