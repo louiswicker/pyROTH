@@ -51,18 +51,21 @@ truelat1, truelat2 = 30.0, 60.0
 
 # Parameter dict for Gridding
 _grid_dict = {
-              'grid_spacing_xy' : 2000.,   # meters
-              'grid_radius_xy'  : 150000., # meters
-              'weight_func'     : 'Cressman',    # options are Cressman, GC, and Exp
-              'ROI'             : 2000./0.707, # meters
-              'projection'      : 'lcc', # map projection to use for gridded data
-              'mask_vr_with_dbz': True,
+              'grid_spacing_xy' : 1000.,       # meters
+              'domain_radius_xy': 40000.,      # meters
+              'anal_method'     : 'Barnes',    # options are Cressman, Barnes (1-pass)
+              'ROI'             : 600.,        # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
+              'min_count'       : 10,          # regular radar data ~3, high-res radar data ~ 10
+              'min_weight'      : 1.0,         # min weight for analysis Cressman ~ 0.3, Barnes ~ 2
+              'min_range'       : 500.,        # min distance away from the radar for valid analysis (meters)
+              'projection'      : 'lcc',       # map projection to use for gridded data
+              'mask_vr_with_dbz': False,
               '0dbz_obtype'     : True,
               'thin_zeros'      : 4,
               'halo_footprint'  : 3,
               'nthreads'        : 1,
               'max_height'      : 10000.,
-              'MRMS_zeros'      : [True, 3000.,7000.], 
+              'MRMS_zeros'      : [False, 3000.,7000.], 
              }
 
 # Dict for the standard deviation of obs_error for reflectivity or velocity (these values are squared when written to DART) 
@@ -79,6 +82,7 @@ _radar_parameters = {
                      'min_dbz_analysis': 20.0, 
                      'max_range': 150000.,
                      'max_Nyquist_factor': 2,    # dont allow output of velocities > Nyquist*factor
+                     'field_label_trans': [True, "DBZC", "VR"]  # RaxPol 31 May - must specify for edit sweep files
                     }
         
 #=========================================================================================
@@ -216,6 +220,7 @@ def ObType_LookUp(name,DART_name=False,Print_Table=False):
 
       Look_Up_Table={ "DOPPLER_VELOCITY":                 [11,   "DOPPLER_RADIAL_VELOCITY"] ,
                       "UNFOLDED VELOCITY":                [11,   "DOPPLER_RADIAL_VELOCITY"] ,
+                      "VELOCITY":                         [11,   "DOPPLER_RADIAL_VELOCITY"] ,
                       "DOPPLER_RADIAL_VELOCITY":          [11,   "DOPPLER_RADIAL_VELOCITY"] ,
                       "REFLECTIVITY":                     [12,   "RADAR_REFLECTIVITY"],
                       "RADAR_REFLECTIVITY":               [12,   "RADAR_REFLECTIVITY"],
@@ -665,37 +670,47 @@ def volume_prep(radar, unfold_type="phase"):
 def grid_data(volume, field):
   
   grid_spacing_xy = _grid_dict['grid_spacing_xy']
-  grid_length     =_grid_dict['grid_radius_xy']
-  grid_pts_xy     = 1 + 2*np.int(grid_length/grid_spacing_xy)
+  domain_length   = _grid_dict['domain_radius_xy']
+  grid_pts_xy     = 1 + 2*np.int(domain_length/grid_spacing_xy)
   roi             = _grid_dict['ROI']
   nthreads        = _grid_dict['nthreads']
   radar_lat       = volume.latitude['data'][0]
   radar_lon       = volume.longitude['data'][0]
 
+  if _grid_dict['anal_method'] == 'Cressman':
+     anal_method = 1
+  else:
+     anal_method = 2
+
+  min_count  = _grid_dict['min_count']
+  min_weight = _grid_dict['min_weight']
+  min_range  = _grid_dict['min_range']
+
 # Set up coordinates for the plots
 
 
-#   map = Basemap(projection=_grid_dict['projection'], width=grid_length, \
-#                 height=grid_length, resolution='c', lat_1=30.,lat_2=60., lat_0=radar_lat,lon_0=radar_lon)  
-  
-  xg = -grid_length + grid_spacing_xy * np.arange(grid_pts_xy)
-  yg = -grid_length + grid_spacing_xy * np.arange(grid_pts_xy)
+  xg = -domain_length + grid_spacing_xy * np.arange(grid_pts_xy)
+  yg = -domain_length + grid_spacing_xy * np.arange(grid_pts_xy)
   
   map = Proj(proj='lcc', ellps='WGS84', datum='WGS84', lat_1=truelat1, lat_2=truelat2, lat_0=radar_lat, lon_0=radar_lon) 
   lons, lats = map(xg, yg, inverse=True)
   
   print '\n Gridding radar data with following parameters'
   print ' ---------------------------------------------\n'
+  print ' Method of Analysis:      {}'.format(_grid_dict['anal_method'])
   print ' Horizontal grid spacing: {} m'.format(grid_spacing_xy)
   print ' Grid points in x,y:      {},{}'.format(int(grid_pts_xy),int(grid_pts_xy))
-  print ' Weighting function:      {}'.format(_grid_dict['weight_func'])
-  print ' Radius of Influence:     {} km'.format(_grid_dict['ROI'])
+  print ' Weighting function:      {}'.format(_grid_dict['anal_method'])
+  print ' Radius of Influence:     {} km'.format(_grid_dict['ROI']/1000.)
+  print ' Minimum gates:           {}'.format(min_count)
+  print ' Minimum weight:          {}'.format(min_weight)
+  print ' Minimum range:           {}'.format(min_range)
   print ' Map projection:          {}'.format(_grid_dict['projection'])
   print ' Field to be gridded:     {}\n'.format(field) 
   print ' Min / Max X grid loc:    {} <-> {} km\n'.format(0.001*xg[0], 0.001*xg[-1])
   print ' Min / Max Y grid loc:    {} <-> {} km\n'.format(0.001*yg[0], 0.001*yg[-1])
-  print ' Min / Max Longitude:    {} <-> {} deg\n'.format(lons[0], lons[-1])
-  print ' Min / Max Latitude:      {} <->  {} deg\n'.format(lats[0], lats[-1])
+  print ' Min / Max Longitude:     {} <-> {} deg\n'.format(lons[0], lons[-1])
+  print ' Min / Max Latitude:      {} <-> {} deg\n'.format(lats[0], lats[-1])
   print ' ---------------------------------------------\n' 
 
   
@@ -705,17 +720,17 @@ def grid_data(volume, field):
 
   def wf(z_in):
     
-      if _grid_dict['weight_func'] == 'Cressman':
+      if _grid_dict['anal_method'] == 'Cressman':
           w    = np.zeros((z_in.shape), dtype=np.float64)
           ww   = (roi**2 - z_in**2) / (roi**2 + z_in**2)
           mask = (np.abs(z_in) <  roi)
           w[mask] = ww[mask] 
           return w
           
-      elif _grid_dict['weight_func'] == 'test':
+      elif _grid_dict['anal_method'] == 'test':
           return np.ones((z_in.shape), dtype=np.float64)
           
-      elif _grid_dict['weight_func'] == 'Exp':
+      elif _grid_dict['anal_method'] == 'Barnes':
 
           return np.exp(-(z_in/roi)**2)
           
@@ -769,7 +784,7 @@ def grid_data(volume, field):
     iy = np.searchsorted(yg, yob)
     
     if obs.size > 0:
-        tmp = cressman.obs_2_grid2d(obs, xob, yob, xg, yg, ix, iy, roi, -99999.)
+        tmp = cressman.obs_2_grid2d(obs, xob, yob, xg, yg, ix, iy, anal_method, min_count, min_weight, min_range, roi, -99999.)
         new_mask = (tmp == -99999.)
         new[n] = np.ma.array(tmp, mask=new_mask)
     else:
@@ -786,11 +801,13 @@ def grid_data(volume, field):
     zobs= z.ravel()
     xob = x.ravel()
     yob = y.ravel()
+
+    zobs = np.where( zobs < 0.0, 0.0, zobs)
     
     ix = np.searchsorted(xg, xob)
     iy = np.searchsorted(yg, yob)
 
-    tmp = cressman.obs_2_grid2d(zobs, xob, yob, xg, yg, ix, iy, roi, -99999.)
+    tmp = cressman.obs_2_grid2d(zobs, xob, yob, xg, yg, ix, iy, 1, 1, 0.1, min_range, 2.0*grid_spacing_xy, -99999.)
     new_mask = (tmp == -99999.)
     zgrid[n] = np.ma.array(tmp, mask=new_mask)
     
@@ -1118,8 +1135,8 @@ if __name__ == "__main__":
   parser.add_option("-w", "--write",     dest="write",   default=False, \
                      help = "Boolean flag to write DART ascii file", action="store_true")
                      
-  parser.add_option(     "--weight",     dest="weight",   default=None, type="string", \
-          help = "Function to use for the weight process, valid strings are:  Cressman, GC, Exp")
+  parser.add_option(     "--method",     dest="method",   default=None, type="string", \
+          help = "Function to use for the weight process, valid strings are:  Cressman or Barnes")
           
   parser.add_option(     "--dx",     dest="dx",   default=None, type="float", \
           help = "Analysis grid spacing in meters for superob resolution")
@@ -1198,8 +1215,8 @@ if __name__ == "__main__":
       print "\n          NO VELOCITY UNFOLDING DONE...\n\n"
       unfold_type = None
     
-  if options.weight:
-       _grid_dict['weight_func'] = options.weight
+  if options.method:
+       _grid_dict['anal_method'] = options.method
 
   if options.dx:
        _grid_dict['grid_spacing_xy'] = options.dx
@@ -1226,7 +1243,12 @@ if __name__ == "__main__":
       tim0 = timeit.time()
       
       if fname[-3:] == ".nc":
-        volume = pyart.io.read_cfradial(fname, field_names={"REF_edit":"reflectivity", "VEL_edit":"velocity"})
+        if _radar_parameters['field_label_trans'][0] == True:
+            REF_LABEL = _radar_parameters['field_label_trans'][1]
+            VEL_LABEL = _radar_parameters['field_label_trans'][2]
+            volume = pyart.io.read_cfradial(fname, field_names={REF_LABEL:"reflectivity", VEL_LABEL:"velocity"})
+        else:
+            volume = pyart.io.read_cfradial(fname)
       else:
         volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
                                               additional_metadata=None, file_field_names=False, 
@@ -1269,7 +1291,8 @@ if __name__ == "__main__":
           
 # Mask it off based on dictionary parameters set at top
 
-      vel = vel_masking(vel, ref, volume)
+      if _grid_dict['mask_vr_with_dbz']:
+          vel = vel_masking(vel, ref, volume)
     
       pyROTH_regrid_cpu = timeit.time() - tim0
   

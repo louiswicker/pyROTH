@@ -1,4 +1,4 @@
- subroutine cressman(x, y, ob, xg, yg, roi, missing_value, anal, nobs, nx, ny)
+ subroutine cressman(x, y, ob, xg, yg, method, min_count, min_weight, min_range, roi, missing_value, anal, nobs, nx, ny)
 
    implicit none
  
@@ -8,18 +8,26 @@
    real(8), intent(in),  dimension(nx)   :: xg
    real(8), intent(in),  dimension(ny)   :: yg
    real(4), intent(out), dimension(nx,ny) :: anal
-   real,    intent(in) :: roi, missing_value
-   integer, intent(in) :: nobs, nx, ny
+   real,    intent(in) :: roi, missing_value, min_weight, min_range
+   integer, intent(in) :: nobs, nx, ny, min_count, method
 
-   integer n, i, j
-   real(kind=4) dis, R2, w_sum, top, wk, rk2
-   real, parameter :: hsp = 1.33
+   integer n, i, j, count
+   real(kind=4) dis, R2, w_sum, sum, wk, rk2
+   real, parameter :: hsp0 = 1.33
 
    logical, parameter :: debug = .false.
  
-   R2 = roi**2.0
+   IF ( method .eq. 1 ) THEN
+     R2 = roi**2.0
+   ELSE
+     R2 = (hsp0*roi/1000.)**2     ! Pauley and Wu (1990)
+   ENDIF
  
    IF( debug ) THEN
+      print *, 'Method:                 ', method
+      print *, 'Min gates for analysis: ', min_count
+      print *, 'Min weight for analysis:', min_weight
+      print *, 'Min range for analysis: ', min_range
       print *, 'Nobs:                   ', nobs
       print *, 'Nx/Ny:                  ', nx, ny
       print *, 'Maxval of anal before:  ', maxval(anal)
@@ -38,22 +46,44 @@
    DO j = 1,ny
     DO i = 1,nx
 
-     w_sum = 0.0
-     top   = 0.0  
-     anal(i,j) = missing_value
-     DO n = 1,nobs
-       dis = sqrt( (xg(i) - x(n))**2 + (yg(j)-y(n))**2 )
-       IF (dis .le. roi) THEN
-         rk2 = dis**2.0
-         wk = (R2-rk2) / (R2+rk2)
-         top = top + wk*ob(n)
-         w_sum = w_sum + wk
-       ENDIF
- 
-     ENDDO
- 
-     IF (w_sum .ge. 0.01) THEN
-      anal(i,j) = anal(i,j) + top/w_sum
+     IF( method .eq. 1 ) THEN   ! Cressman
+
+       count = 0
+       w_sum = 0.0
+       sum   = 0.0  
+       anal(i,j) = missing_value
+       DO n = 1,nobs
+         dis = sqrt( (xg(i) - x(n))**2 + (yg(j)-y(n))**2 )
+         IF ((dis .le. roi) .and. (dis .ge. min_range)) THEN
+           rk2 = dis**2.0
+           wk = (R2-rk2) / (R2+rk2)
+           sum = sum + wk*ob(n)
+           w_sum = w_sum + wk
+           count = count + 1
+         ENDIF
+       ENDDO
+
+     ELSE       ! Barnes 1-pass
+
+       count = 0
+       w_sum = 0.0
+       sum   = 0.0  
+       anal(i,j) = missing_value
+       DO n = 1,nobs
+         dis = sqrt( (xg(i) - x(n))**2 + (yg(j)-y(n))**2 )
+         IF ((dis .le. 6.0*roi) .and. (dis .ge. min_range)) THEN
+           rk2 = dis**2.0
+           wk = exp( -rk2 / R2 )
+           sum = sum + wk*ob(n)
+           w_sum = w_sum + wk
+           count = count + 1
+         ENDIF
+       ENDDO
+
+     ENDIF
+
+     IF ((w_sum .ge. min_weight) .and. (count .ge. min_count)) THEN
+        anal(i,j) = anal(i,j) + sum/w_sum
      ENDIF
  
     ENDDO
@@ -112,7 +142,7 @@
 ! 
 !# END python code
 !======================================================================================================'
-SUBROUTINE OBS_2_GRID2D(obs, xob, yob, xc, yc, ii, jj, hscale, missing, field, nobs, nx, ny)
+SUBROUTINE OBS_2_GRID2D(obs, xob, yob, xc, yc, ii, jj, method, min_count, min_weight, min_range, roi, missing, field, nobs, nx, ny)
                    
   implicit none
 
@@ -128,41 +158,61 @@ SUBROUTINE OBS_2_GRID2D(obs, xob, yob, xc, yc, ii, jj, hscale, missing, field, n
   integer(kind=8), INTENT(IN)  :: jj(nobs)          ! nearest index to the x-point on grid for o 
   real(kind=4),    INTENT(IN)  :: xc(nx)         ! coordinates corresponding to WRF model grid locations
   real(kind=4),    INTENT(IN)  :: yc(ny)         ! coordinates corresponding to WRF model grid locations
-  real(kind=4),    INTENT(IN)  :: hscale
+  real(kind=4),    INTENT(IN)  :: roi
   real(kind=4),    INTENT(IN)  :: missing
-  
+  real(kind=4),    INTENT(IN)  :: min_weight, min_range
+  INTEGER(kind=8), INTENT(IN)  :: min_count, method
+
+
 ! Local variables
 
   integer(kind=8) i, j, i0, j0, n, i0m, i0p, j0m, j0p, idx, jdx       ! loop variables
   
-  real(kind=8) dis, wgt, R2, dx, dy
+  real(kind=8) dis, wgt, R2, dx, dy, rk2, dxy
   real(kind=4), allocatable, dimension(:,:) :: sum, wgt_sum
+  integer(kind=8), allocatable, dimension(:,:) :: count
 
-! DEBUG
+  real, parameter :: hsp0 = 1.33
+
   logical, parameter :: debug = .false.
-  
+
 ! Allocate local memory
 
   allocate(wgt_sum(ny, nx))
   allocate(sum(ny, nx))
+  allocate(count(ny, nx))
 
 ! Initialize values
 
   field(:,:)   = missing  
   wgt_sum(:,:) = 0.0
   sum(:,:)     = 0.0
+  count(:,:)   = 0
   
-  R2 = hscale**2
   dx = xc(2) - xc(1)
   dy = yc(2) - yc(1)
+  dxy = sqrt(dx*dy)
   
-  idx = 1 + nint(1.25*hscale/dx)
-  jdx = 1 + nint(1.25*hscale/dy)
-
+  IF ( method .eq. 1 ) THEN
+    R2 = roi**2.0
+    idx = 1 + nint(1.25*roi/dx)
+    jdx = 1 + nint(1.25*roi/dy)
+  ELSE
+    R2 = (hsp0*roi/1000.)**2     ! Pauley and Wu (1990)
+    idx = 1 + nint(7.*roi/dx)
+    jdx = 1 + nint(7.*roi/dy)
+  ENDIF
+  
   IF( debug) THEN
+    print *, "----------------------------------------------------------------"
+    print * 
+    print *, "FORTRAN OBS_2_GRID2D:  Method  ", method
+    print *, 'FORTRAN OBS_2_GRID2D:  Min gates for analysis: ', min_count
+    print *, 'FORTRAN OBS_2_GRID2D:  Min weight for analysis:', min_weight
+    print *, 'FORTRAN OBS_2_GRID2D:  Min range for analysis: ', min_range
     print *, "FORTRAN OBS_2_GRID2D:  dims  ", nx, ny, nobs
-    print *, "FORTRAN OBS_2_GRID2D:  dx, hscale", dx, hscale
-    print *, "FORTRAN OBS_2_GRID2D:  dy, hscale", dy, hscale
+    print *, "FORTRAN OBS_2_GRID2D:  dx, ROI, R2", dx, ROI, R2
+    print *, "FORTRAN OBS_2_GRID2D:  dy, ROI, R2", dy, ROI, R2
     print *, "FORTRAN OBS_2_GRID2D:    obs ", minval(obs), maxval(obs)
     print *, "FORTRAN OBS_2_GRID2D:  x-obs ", minval(xob), maxval(xob)
     print *, "FORTRAN OBS_2_GRID2D:  y-obs ", minval(yob), maxval(yob)
@@ -184,34 +234,60 @@ SUBROUTINE OBS_2_GRID2D(obs, xob, yob, xc, yc, ii, jj, hscale, missing, field, n
     
     i0p = min(i0+idx,nx)
     j0p = min(j0+jdx,ny)
+
+    IF( method .eq. 1 ) THEN    ! Cressman
     
-    DO i = i0m, i0p
-      DO j = j0m, j0p
+      DO i = i0m, i0p
+        DO j = j0m, j0p
         
           dis = (xc(i) - xob(n))**2 + (yc(j)-yob(n))**2
           wgt = (R2 - dis) / (R2 + dis)
           IF (wgt > 0.0) THEN
-            sum(j,i) = sum(j,i) + wgt*obs(n)
+            sum(j,i)     = sum(j,i) + wgt*obs(n)
             wgt_sum(j,i) = wgt_sum(j,i) + wgt
+            count(j,i)   = count(j,i) + 1
           ENDIF  
                     
-      ENDDO    ! END J
-    ENDDO     ! END I          
+        ENDDO    ! END J
+      ENDDO     ! END I          
+
+    ELSE
+
+      DO i = i0m, i0p
+        DO j = j0m, j0p
+
+         dis = sqrt( (xc(i) - xob(n))**2 + (yc(j)-yob(n))**2 )
+         IF ((dis .le. 5.0*roi) .and. (dis .ge. min_range)) THEN
+           rk2          = (dis/dxy)**2.0
+           wgt          = exp( -rk2 / R2 )
+           sum(j,i)     = sum(j,i) + wgt*obs(n)
+           wgt_sum(j,i) = wgt_sum(j,i) + wgt
+           count(j,i)   = count(j,i) + 1
+         ENDIF
+
+        ENDDO    ! END J
+      ENDDO     ! END I          
+
+    ENDIF
+
   ENDDO      ! END N
 
+! WHERE( count   <  min_count ) wgt_sum = 0.0
   WHERE( wgt_sum > 0.01 ) field = sum / wgt_sum
   
   
   IF( debug ) THEN
   
-    print *, "FORTRAN OBS_2_GRID2D:    wgts  ", minval(wgt_sum), maxval(wgt_sum)
-    print *, "FORTRAN OBS_2_GRID2D:    sum   ", minval(sum), maxval(sum)
-    print *, "FORTRAN OBS_2_GRID2D:    field ", minval(field), maxval(field)
+    print *, "FORTRAN OBS_2_GRID2D:    counts ", minval(count), maxval(count)
+    print *, "FORTRAN OBS_2_GRID2D:    wgts   " , minval(wgt_sum), maxval(wgt_sum)
+    print *, "FORTRAN OBS_2_GRID2D:    sums   ", minval(sum), maxval(sum)
+    print *, "FORTRAN OBS_2_GRID2D:    field  ", minval(field), maxval(field)
   
   ENDIF
  
   deallocate(wgt_sum)
   deallocate(sum)
+  deallocate(count)
 
 RETURN
 END SUBROUTINE OBS_2_GRID2D
