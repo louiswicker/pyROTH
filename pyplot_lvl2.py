@@ -42,8 +42,8 @@ _range_rings = [25, 50, 75, 100, 125]
 _max_range    = 150000.
 _x_plot_range = [-_max_range, _max_range]
 _y_plot_range = [-_max_range, _max_range] 
-_lat_lines    = False
-_lon_lines    = False
+_lat_lines    = True
+_lon_lines    = True
 
 # Output file format
 _file_type = "png"
@@ -119,10 +119,10 @@ def volume_prep(radar, unfold_type="phase"):
 
   return False
 #===============================================================================
-def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, ticks = True, 
+def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, supress_ticks = True, 
               resolution='c',area_thresh = 10., shape_env = False, 
               counties=False, states = False, lat_lines=_lat_lines, lon_lines=_lon_lines, 
-              pickle = False, ax=None):
+              pickle = False, ax=None, **kwargs):
 
    tt = timeit.clock()
    
@@ -132,7 +132,7 @@ def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, ticks = True,
                   projection = 'lcc',      \
                   resolution=resolution,   \
                   area_thresh=area_thresh, \
-                  suppress_ticks=ticks, ax=ax)
+                  suppress_ticks=supress_ticks, ax=ax)
 
    if counties or _counties:
       map.drawcounties()
@@ -142,11 +142,11 @@ def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, ticks = True,
        
    if lat_lines == True:
        lat_lines = N.arange(30., 60., 0.5)
-       map.drawparallels(lat_lines, labels=[True, False, False, False])
+       map.drawparallels(lat_lines, labels=[1,0,0,0], fontsize=10)
        
    if lon_lines == True:
        lon_lines = N.arange(-110., 70., 0.5)
-       map.drawmeridians(lon_lines, labels=[False, False, False, True])
+       map.drawmeridians(lon_lines, labels=[0,0,0,1], fontsize=10)
        
    # Shape file stuff
 
@@ -209,7 +209,7 @@ def create_ppi_map(radar, xr, yr, plot_range_rings=_plot_RangeRings, ax=None, **
    
 #############################################################################################
 def plot_ppi_map(radar, field, level = 0, cmap=ctables.Carbone42, vRange=None, var_label = None, \
-                 plot_range_rings=True, ax=None, **kwargs):
+                 plot_range_rings=True, ax=None, zoom = None, **kwargs):
                  
    start = radar.get_start(level)
    end   = radar.get_end(level) + 1
@@ -230,8 +230,12 @@ def plot_ppi_map(radar, field, level = 0, cmap=ctables.Carbone42, vRange=None, v
    plot = map.pcolormesh(x, y, data, cmap=cmap, vmin = vRange[0], vmax = vRange[1], ax=ax)
    cbar = map.colorbar(plot, location = 'right', pad = '3%')
    
-   ax.set_xlim(radar_x+_x_plot_range[0],radar_x+_x_plot_range[1])
-   ax.set_ylim(radar_y+_y_plot_range[0],radar_y+_y_plot_range[1])
+   if zoom:
+      ax.set_xlim(radar_x+1000.*zoom[0],radar_x+1000.*zoom[1])
+      ax.set_ylim(radar_y+1000.*zoom[2],radar_y+1000.*zoom[3])
+   else:   
+      ax.set_xlim(radar_x+_x_plot_range[0],radar_x+_x_plot_range[1])
+      ax.set_ylim(radar_y+_y_plot_range[0],radar_y+_y_plot_range[1])
 
    time = radar.time['units'].split(" ")[2]
 #time = time.replace("-","_")
@@ -285,6 +289,9 @@ if __name__ == "__main__":
                      
   parser.add_option("-s", "--shapefiles", dest="shapefiles", default=None, type="string",    \
                      help = "Name of system env shapefile you want to add to the plots.")
+                     
+  parser.add_option(       "--zoom",     dest="zoom", type="int", nargs = 4, \
+                     help="zoom in on (in KM) of plot 4 args required: xmin xmax ymin ymax")
                      
   (options, args) = parser.parse_args()
   
@@ -369,10 +376,10 @@ if __name__ == "__main__":
             vr_label = "Radial Velocity"
 
     outfile  = plot_ppi_map(volume, "reflectivity", level=options.level, vRange=_ref_scale, cmap=_ref_ctable, \
-                            ax=axes[0], var_label='Reflectivity', shape_env=shapefiles)
+                            ax=axes[0], var_label='Reflectivity', shape_env=shapefiles, zoom=options.zoom)
 
     outfile  = plot_ppi_map(volume, vr_field, level=options.level, vRange=_vr_scale, cmap=_vr_ctable, ax=axes[1], 
-                            var_label=vr_label, shape_env=shapefiles)
+                            var_label=vr_label, shape_env=shapefiles, zoom=options.zoom)
 
     fig.subplots_adjust(left=0.06, right=0.90, top=0.90, bottom=0.1, wspace=0.35)
     
