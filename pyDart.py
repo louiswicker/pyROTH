@@ -669,6 +669,7 @@ class pyDART():
                 print
             
             self.index = table.get_where_list(search_string)    # Do the search
+
             if len(self.index) == 0:  self.index = None
             
             if tablereturn != None:
@@ -1208,7 +1209,7 @@ class pyDART():
         for numqc in N.arange(num_qc):          # If the num_qc flag is > 0, read the description of the qc flags
             data_storage.append(fi.readline())
 
-        print "\n"
+        print "\n ", data_storage
         for numcp in N.arange(num_copies+num_qc):      # Now read the observation, and if provided, the truth value
             print "Observation data types:  %s" % (data_storage[numcp][:-2])
             if ((data_storage[numcp].find("obs") != -1) and 
@@ -1994,7 +1995,7 @@ class pyDART():
         fi.write("observations\n")
         if attr.col('num_copies')[0] == 2:
             fi.write("truth\n")
-        fi.write("QC obs\n")
+        fi.write("QC\n")
                 
         if self.index != None:
             fi.write(" num_obs:       %d  max_num_obs:       %d\n" % (len(self.index), len(self.index)) )
@@ -2419,7 +2420,7 @@ def main(argv=None):
             myDART.file(filename = options.file)
             myDART.search(variable=options.variable, start = start, end = end, condition=options.condition, loc=loc)
             if options.verbose:
-                if len(myDART.index) != 0:
+                if myDART.index != None:
                     print "\n pyDart: %d Observations found between %s and %s in file %s " % (len(myDART.index), str(start), str(end), myDART.hdf5)
                 else:
                     print "\n pyDart:  No Observations found between %s and %s in file %s " % (str(start), str(end), myDART.hdf5)
