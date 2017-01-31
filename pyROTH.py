@@ -51,16 +51,16 @@ truelat1, truelat2 = 30.0, 60.0
 
 # Parameter dict for Gridding
 _grid_dict = {
-              'grid_spacing_xy' : 1000.,       # meters
-              'domain_radius_xy': 40000.,      # meters
-              'anal_method'     : 'Barnes',    # options are Cressman, Barnes (1-pass)
-              'ROI'             : 600.,        # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
-              'min_count'       : 10,          # regular radar data ~3, high-res radar data ~ 10
-              'min_weight'      : 1.0,         # min weight for analysis Cressman ~ 0.3, Barnes ~ 2
-              'min_range'       : 500.,        # min distance away from the radar for valid analysis (meters)
+              'grid_spacing_xy' : 3000.,       # meters
+              'domain_radius_xy': 150000.,     # meters
+              'anal_method'     : 'Cressman',    # options are Cressman, Barnes (1-pass)
+              'ROI'             : 6000.,        # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
+              'min_count'       : 3,          # regular radar data ~3, high-res radar data ~ 10
+              'min_weight'      : 0.20,         # min weight for analysis Cressman ~ 0.3, Barnes ~ 2
+              'min_range'       : 5000.,        # min distance away from the radar for valid analysis (meters)
               'projection'      : 'lcc',       # map projection to use for gridded data
               'mask_vr_with_dbz': False,
-              '0dbz_obtype'     : True,
+              '0dbz_obtype'     : False,
               'thin_zeros'      : 4,
               'halo_footprint'  : 3,
               'nthreads'        : 1,
@@ -71,9 +71,9 @@ _grid_dict = {
 # Dict for the standard deviation of obs_error for reflectivity or velocity (these values are squared when written to DART) 
            
 _obs_errors = {
-                'reflectivity'  : 10.,
+                'reflectivity'  : 7.5,
                 '0reflectivity' : 5.0, 
-                'velocity'      : 4.0
+                'velocity'      : 3.0
               }
 
 # Parameter dict setting radar data parameters
@@ -82,7 +82,7 @@ _radar_parameters = {
                      'min_dbz_analysis': 20.0, 
                      'max_range': 150000.,
                      'max_Nyquist_factor': 2,    # dont allow output of velocities > Nyquist*factor
-                     'field_label_trans': [True, "DBZC", "VR"]  # RaxPol 31 May - must specify for edit sweep files
+                     'field_label_trans': [False, "DBZC", "VR"]  # RaxPol 31 May - must specify for edit sweep files
                     }
         
 #=========================================================================================
@@ -451,6 +451,8 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
   seconds = np.int(86400.*(days - np.floor(days)))
   
 # Print the number of value gates
+
+#  mask_check = data.mask && numpy.isnan().any()
 
   data_length = np.sum(data.mask[:]==False)
   print("\n Number of good observations:  %d" % data_length)
@@ -1187,13 +1189,15 @@ if __name__ == "__main__":
     print("\n pyROTH:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dname))
     print("\n pyROTH:  First file is %s\n" % (in_filenames[0]))
     print("\n pyROTH:  Last  file is %s\n" % (in_filenames[-1]))
+    print("\n pyROTH:  Last  file is %s\n" % (in_filenames[0][-3:]))
  
-    if in_filenames[0][-3:] == "V06":
+    if in_filenames[0][-3:] == "V06" or in_filenames[0][-6:] == "V06.gz":
       for item in in_filenames:
         strng = os.path.basename(item)[0:17]
         strng = strng[0:4] + "_" + strng[4:]
         strng = os.path.join(options.out_dir, strng)
         out_filenames.append(strng) 
+        print(strng)
         
     if in_filenames[0][-3:] == ".nc":
       for item in in_filenames:

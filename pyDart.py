@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-#
 #===============================================================================
-# Last update:  LJW Sept 2013
 
 #===============================================================================
 
@@ -9,7 +7,7 @@ import sys, os
 import string
 import re
 import glob
-import pylab as P
+import matplotlib.pylab as P
 import numpy as N
 import time
 import netCDF4 as ncdf
@@ -535,7 +533,7 @@ def mergeTables(table_new, tables, addindex=True):
         h5file1, table1 = open_pyDart_file(tables[0])
         print "Creating new table to copy into...."
         h5file1.copy_file(table_new, overwrite=True)
-        print "Finished copying %s into %s" % (tables[0], table_new)
+        print("Finished copying %s into %s, has a length: %i" % (tables[0], table1, table1.nrows))
 
         h5file1.close()   
         h5file1, table1 = open_pyDart_file(table_new, append=True)
@@ -549,12 +547,18 @@ def mergeTables(table_new, tables, addindex=True):
             table1.flush()
 
             h5file2.close()
+            print("Finished copying %s into %s\n New table has a length: %i\n" % (tables[0], table1, table1.nrows))
 
         print "Finished appending all table rows...."
         print "New table:    ", table1
         
         indexrows = table1.cols.utime.create_index()
         indexrows = table1.cols.kind.create_index()
+        
+        group_header = h5file1.root.header
+        group_header.attributes.cols.last[0]        = table1.nrows
+        group_header.attributes.cols.max_num_obs[0] = table1.nrows
+        group_header.attributes.cols.num_obs[0]     = table1.nrows
 
         h5file1.close()
 
@@ -1262,9 +1266,11 @@ class pyDART():
         
         n = 0
         
-        while n < group_header.attributes.cols.num_obs[0]:
+        while True:
             
             stuff            = fi.readline()        # Read(str) "OBS...." line
+            if not stuff: break
+            
             stuff            = stuff.split()
             
             row["number"]    = long(stuff[1])
@@ -1425,12 +1431,21 @@ class pyDART():
                 print "read_DART_ob:  Processed observation # ", n+1, days #,sec_utime.date2num(date) #,py_datetime(start[0],start[1],start[2],start[3],start[4],start[5])
                 print "date = ", date
             
-            n += 1
-            
-            row.append()
+            if (N.isnan(row['platform_dir1']) or N.isnan(row['platform_dir2'])):
+                print("Found a bad value: %3.3i, skipping\n" % n)
+                pass
+            else:
+                n += 1
+                row.append()
             
             table_obs.flush
-        
+            
+        if n != group_header.attributes.cols.num_obs[0]:
+            group_header.attributes.cols.last[0] = n
+            group_header.attributes.cols.max_num_obs[0]= n
+            group_header.attributes.cols.num_obs[0] = n
+            print("Changed number of obs to: %3.3i \n" % (n))
+                        
         h5file.close()
         
         fi.close()
