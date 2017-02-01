@@ -2013,7 +2013,7 @@ class pyDART():
         fi.write("QC\n")
                 
         if self.index != None:
-            fi.write(" num_obs:       %d  max_num_obs:       %d\n" % (len(self.index), len(self.index)) )
+            fi.write("  first:            %d  last:       %d\n" % (1, len(self.index)) )
             if self.debug:
                 print "pyDart/hdf2ascii:  Max number of observations:    ", len(self.index)
         else:

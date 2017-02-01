@@ -10,5 +10,5 @@ print "\n=====================================================\n"
 
 #cmd = "f2py --fcompiler='intel' --f90flags='-O3' -c -m cressman cressman.f90"
 #os.system(cmd)
-cmd = "f2py --fcompiler='gnu95' --f90flags='-O3' -c -m cressman kdtree2.o cressman.f90"
+cmd = "f2py --fcompiler='gnu95' --f90flags='-O3' -c -m cressman kdtree2.o cressman.f90 /Users/Louis.Wicker/anaconda/lib/libgfortran.a"
 os.system(cmd)
