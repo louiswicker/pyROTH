@@ -1038,6 +1038,16 @@ class pyDART():
                 z      = N.where(data['z'] != _missing, data['z']/1000., _missing)
                 az     = N.where(data['azimuth']   != _missing, data['azimuth'],   _missing)
                 el     = N.where(data['elevation'] != _missing, data['elevation'], _missing)
+
+                print "Printing values that seem to be whole numbers"
+                print
+                print "========================================================================================================================"
+                print "Index     Variable    Value  Date/Time       Lat    Lon    X(km)  Y(km)  Z(km)      AZ        EL"
+                
+                for n in range(0,len(self.index)):
+                        if( round(10*value[n]) - 10*value[n] == 0.0):
+                            print "%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
+                             % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n])
                 
                 if dumplength == True:
                     dumplength = len(self.index)

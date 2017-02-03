@@ -31,14 +31,17 @@ import scipy.spatial
 from optparse import OptionParser
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredText
 import netCDF4 as ncdf
-from pyproj import Proj
 
 import cressman
 import pyart
 
+from pyproj import Proj
 import pylab as plt  
 from mpl_toolkits.basemap import Basemap
 from pyart.graph import cm
+
+# missing value
+_missing = -99999.
 
 # This flag adds an k/j/i index to the DART file, which is the index locations of the gridded data
 _write_grid_indices = True
@@ -51,20 +54,20 @@ truelat1, truelat2 = 30.0, 60.0
 
 # Parameter dict for Gridding
 _grid_dict = {
-              'grid_spacing_xy' : 3000.,       # meters
+              'grid_spacing_xy' : 6000.,       # meters
               'domain_radius_xy': 150000.,     # meters
               'anal_method'     : 'Cressman',    # options are Cressman, Barnes (1-pass)
-              'ROI'             : 6000.,        # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
-              'min_count'       : 3,          # regular radar data ~3, high-res radar data ~ 10
-              'min_weight'      : 0.20,         # min weight for analysis Cressman ~ 0.3, Barnes ~ 2
-              'min_range'       : 5000.,        # min distance away from the radar for valid analysis (meters)
+              'ROI'             : 6000./0.707,   # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
+              'min_count'       : 6,            # regular radar data ~3, high-res radar data ~ 10
+              'min_weight'      : 0.2,          # min weight for analysis Cressman ~ 0.3, Barnes ~ 2
+              'min_range'       : 10000.,        # min distance away from the radar for valid analysis (meters)
               'projection'      : 'lcc',       # map projection to use for gridded data
               'mask_vr_with_dbz': False,
               '0dbz_obtype'     : False,
               'thin_zeros'      : 4,
               'halo_footprint'  : 3,
               'nthreads'        : 1,
-              'max_height'      : 10000.,
+              'max_height'      : 8000.,
               'MRMS_zeros'      : [False, 3000.,7000.], 
              }
 
@@ -786,8 +789,8 @@ def grid_data(volume, field):
     iy = np.searchsorted(yg, yob)
     
     if obs.size > 0:
-        tmp = cressman.obs_2_grid2d(obs, xob, yob, xg, yg, ix, iy, anal_method, min_count, min_weight, min_range, roi, -99999.)
-        new_mask = (tmp == -99999.)
+        tmp = cressman.obs_2_grid2d(obs, xob, yob, xg, yg, ix, iy, anal_method, min_count, min_weight, min_range, roi, _missing)
+        new_mask = (tmp <= _missing)
         new[n] = np.ma.array(tmp, mask=new_mask)
     else:
         new[n] = np.ma.masked_all((grid_pts_xy, grid_pts_xy))

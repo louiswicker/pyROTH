@@ -12,10 +12,10 @@
    integer, intent(in) :: nobs, nx, ny, min_count, method
 
    integer n, i, j, count
-   real(kind=4) dis, R2, w_sum, sum, wk, rk2
+   real(kind=8) dis, R2, w_sum, sum, wk, rk2
    real, parameter :: hsp0 = 1.33
 
-   logical, parameter :: debug = .false.
+   logical, parameter :: debug = .true.
  
    IF ( method .eq. 1 ) THEN
      R2 = roi**2.0
@@ -82,10 +82,11 @@
 
      ENDIF
 
+
      IF ((w_sum .ge. min_weight) .and. (count .ge. min_count)) THEN
         anal(i,j) = anal(i,j) + sum/w_sum
      ENDIF
- 
+
     ENDDO
    ENDDO
  
@@ -169,7 +170,7 @@ SUBROUTINE OBS_2_GRID2D(obs, xob, yob, xc, yc, ii, jj, method, min_count, min_we
   integer(kind=8) i, j, i0, j0, n, i0m, i0p, j0m, j0p, idx, jdx       ! loop variables
   
   real(kind=8) dis, wgt, R2, dx, dy, rk2, dxy
-  real(kind=4), allocatable, dimension(:,:) :: sum, wgt_sum
+  real(kind=8), allocatable, dimension(:,:) :: sum, wgt_sum
   integer(kind=8), allocatable, dimension(:,:) :: count
 
   real, parameter :: hsp0 = 1.33
@@ -195,8 +196,8 @@ SUBROUTINE OBS_2_GRID2D(obs, xob, yob, xc, yc, ii, jj, method, min_count, min_we
   
   IF ( method .eq. 1 ) THEN
     R2 = roi**2.0
-    idx = 1 + nint(1.25*roi/dx)
-    jdx = 1 + nint(1.25*roi/dy)
+    idx = 1 + nint(2.0*roi/dx)
+    jdx = 1 + nint(2.0*roi/dy)
   ELSE
     R2 = (hsp0*roi/1000.)**2     ! Pauley and Wu (1990)
     idx = 1 + nint(7.*roi/dx)
@@ -272,8 +273,8 @@ SUBROUTINE OBS_2_GRID2D(obs, xob, yob, xc, yc, ii, jj, method, min_count, min_we
 
   ENDDO      ! END N
 
-! WHERE( count   <  min_count ) wgt_sum = 0.0
-  WHERE( wgt_sum > 0.01 ) field = sum / wgt_sum
+  WHERE( wgt_sum > min_weight ) field = sum / wgt_sum
+  WHERE( count   <  min_count ) field = missing
   
   
   IF( debug ) THEN
