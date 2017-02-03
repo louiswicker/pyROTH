@@ -795,12 +795,12 @@ def grid_data(volume, field):
     else:
         new[n] = np.ma.masked_all((grid_pts_xy, grid_pts_xy))
         
-    print(" Number of valid grid points:  %d" % np.sum(new[n].mask==False))
-        
+    print("Elevation: %4.2f  Number of valid grid points:  %d" % (elevations[n],np.sum(new[n].mask==False)))
+
     if field == "reflectivity":
       new[n].mask = np.logical_or(new[n].mask, new[n] < _radar_parameters['min_dbz_analysis'])
-      print(" Number of valid reflectivity points:  %d" % np.sum(new[n].mask==False))
-      
+      print("Elevation: %4.2f  Number of valid reflectivity points:  %d" % (elevations[n],np.sum(new[n].mask==False)))
+
 # Create z-field
 
     zobs= z.ravel()
