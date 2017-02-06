@@ -2311,7 +2311,7 @@ def main(argv=None):
     parser.add_option("-f", "--file",        dest="file",      type="string", help = "Filename of ascii or PyDART file for conversion/search")
     parser.add_option("-l", "--list",        dest="list",      default=False, help = "Boolean flag to list basic contents of the file",            action="store_true")
     parser.add_option(      "--stats",       dest="stats",     default=False, help = "Gives basic stats for variable, helpful to compare files",   action="store_true")
-    parser.add_option("-d", "--dump",        dest="dump",      default=False, help = "Whether to print all values of the search (default = False)",action="store_true")
+    parser.add_option("-d", "--dir",         dest="dir",       default=None,  nargs=2, type="string", help = "Directory of files to process and suffix [.out, .h5]") 
     parser.add_option(      "--ascii2hdf",   dest="ascii2hdf", default=False, help = "Boolean flag to convert ascii DART file to HDF5 DARTfile",   action="store_true")
     parser.add_option(      "--hdf2ascii",   dest="hdf2ascii", default=False, help = "Boolean flag to convert HDF5 DART file to ascii DART file",  action="store_true")
     parser.add_option(      "--nc2hdf",      dest="nc2hdf",    type="string", help = "File name of file or directory to convert netcdf W2 files to HDF5-DART")
@@ -2343,6 +2343,16 @@ def main(argv=None):
     
     (options, args) = parser.parse_args()
     
+    if options.radar_loc != None:
+        radar_loc = [options.radar_loc[0],options.radar_loc[1], options.radar_loc[2]]
+    else:
+        radar_loc = _radar_loc
+    
+    if options.rad2deg == True:
+        _convertLatLon = True
+    else:
+        _convertLatLon = False
+
     if options.nodebug:
         print "Turn off debug"
         myDART.debug = False
@@ -2355,32 +2365,42 @@ def main(argv=None):
         print
         print '------------------------------------------------------------------------------------'
     
-    if options.file == None:
-        print "\n                HEY YOU!!!! SO NO INPUT FILE IS SUPPLIED, EXITING.... \n "
-        parser.print_help()
-        print
-        sys.exit(1)
+    in_filenames  = []
 
-    if options.radar_loc != None:
-        radar_loc = [options.radar_loc[0],options.radar_loc[1], options.radar_loc[2]]
+    if options.dir == None:
+
+        if options.file == None:
+            print "\n                NO INPUT FILE or DIRECTORY IS SUPPLIED, EXITING.... \n "
+            parser.print_help()
+            print
+            sys.exit(1)
+
+        else:
+            in_filenames.append(os.path.abspath(options.file))
+
     else:
-        radar_loc = _radar_loc
-    
-    if options.rad2deg == True:
-        _convertLatLon = True
-    else:
-        _convertLatLon = False
+
+#       suffix = os.path.splitext(options.dir[1])
+        suffix = options.dir[1]
+        in_filenames = glob.glob("%s/*%s" % (os.path.abspath(options.dir[0]), suffix))
+#       print("\n pyDart:  files in the directory:  %s\n" % (in_filenames))
+        print("\n pyDart:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dir[0]))
+        print("\n pyDart:  First file is %s\n" % (in_filenames[0]))
+        print("\n pyDart:  Last  file is %s\n" % (in_filenames[-1]))
 
     if options.ascii2hdf:
-        if options.file[-3:] == "out":
-            if options.verbose:
-                print "\n  PyDart:  converting ASCII DART file:  ", options.file
-            myDART.file(filename = options.file)
-            myDART.ascii2hdf(radar_loc = radar_loc)
-            print "\n PyDart:  Completed convertion, PyDART file:  ", myDART.hdf5
-        else:
-            print "\n File is not labeled `.out`, please rename file..."
-            sys.exit(1)
+
+        for file in in_filenames:
+            print file
+            if file[-3:] == "out":
+                if options.verbose:
+                    print "\n  PyDart:  converting ASCII DART file:  ", file
+                myDART.file(filename = file)
+                myDART.ascii2hdf(radar_loc = radar_loc)
+                print "\n PyDart:  Completed convertion, PyDART file:  ", myDART.hdf5
+            else:
+                print "\n File is not labeled `.out`, please rename file..."
+                sys.exit(1)
     
     if options.start != None:           # Convert start flag to tuple for search
         char = options.start.split(",")
