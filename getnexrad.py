@@ -26,8 +26,8 @@ _region        = 'us-east-1'
 _delta_t       = DT.timedelta(hours=1)  
 _wget_string   = "wget https://noaa-nexrad-level2.s3.amazonaws.com/"
 _pyRoth_string = "pyROTH.py -d %s -u None -w -o roth_%s >& log_%s"
-_pyDart_string = 'pyDart.py -d roth_%s "*VR.out" --ascii2hdf >>& log_%s'
-_merge_string  = 'pyDart.py -f %s -d roth_%s "*VR.h5" --merge >>& log_%s'
+_pyDart_string = 'pyDart.py -d roth_%s "*VR.out" --ascii2hdf >& log_%s'
+_merge_string  = 'pyDart.py -f %s -d roth_%s "*VR.h5" --merge >& log_%s'
 
 debug = True
 _nthreads = 2
@@ -41,6 +41,8 @@ def RunMember(cmd):
     print("\n %s completed...." % cmd)
     return
 
+#=======================================================================================================================
+# getS3filelist
 
 def getfilelist(radar, datetime):
 
@@ -50,6 +52,7 @@ def getfilelist(radar, datetime):
     files = []
 
     prefix = "%s/%s/" % (datetime.strftime("%Y/%m/%d"), radar)
+    print prefix
 
     file_list = noaas3.list_objects_v2(Bucket='noaa-nexrad-level2', Delimiter='/', Prefix=prefix)
 
