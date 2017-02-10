@@ -519,7 +519,6 @@ def mergeTables(table_new, tables, addindex=True):
 
     if len(tables) == 2 and tables[0] == "D":
         tables = glob.glob("%s/*.h5" % tables[1])
-        print tables
 
     print "mergeTable called:  Reading from:  ",tables, len(list(tables))
 
@@ -1039,44 +1038,42 @@ class pyDART():
                 az     = N.where(data['azimuth']   != _missing, data['azimuth'],   _missing)
                 el     = N.where(data['elevation'] != _missing, data['elevation'], _missing)
 
-                print "Printing values that seem to be whole numbers"
-                print
-                print "========================================================================================================================"
+                print("Printing values that seem to be whole numbers")
+                print("%s %s %s" % ("\n", "="*100, "\n"))
                 print "Index     Variable    Value  Date/Time       Lat    Lon    X(km)  Y(km)  Z(km)      AZ        EL"
                 
                 for n in range(0,len(self.index)):
                         if( round(10*value[n]) - 10*value[n] == 0.0):
-                            print "%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
-                             % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n])
+                            print("%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
+                             % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n]))
                 
                 if dumplength == True:
                     dumplength = len(self.index)
                     print
                     if self.verbose:
-                        print "Printing ALL the values, hope it does not take too long because the list has ", dumplength,"  entries"
-                        print
-                        print "========================================================================================================================"
-                        print "Index     Variable    Value  Date/Time       Lat    Lon    X(km)  Y(km)  Z(km)      AZ        EL"
+                        print("Printing ALL the values, hope it does not take too long because the list has %d entries" % 
+                               dumplength)
+                    print("%s %s %s" % ("\n", "="*100, "\n"))
+                    print "Index     Variable    Value  Date/Time       Lat    Lon    X(km)  Y(km)  Z(km)      AZ        EL"
                     
                     for n in range(0,dumplength-1):
-                        print "%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
-                             % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n])
+                        print("%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
+                             % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n]))
                 else:
                     dumplength = min(100,len(self.index))
                     print
                     if self.verbose:
-                        print "Printing the first and last 100 values of search indices"
-                        print
-                        print "========================================================================================================================"
-                        print "Index     Variable    Value          Date/Time           Lat        Lon        X(km)      Y(km)     Z(km)     AZ      EL"
+                        print("Printing the first and last 100 values of search indices")
+                    print("%s %s %s" % ("\n", "="*100, "\n"))
+                    print("Index     Variable    Value          Date/Time           Lat        Lon        X(km)      Y(km)      Z(km)     AZ      EL")
                     
                     for n in range(0,dumplength-1):
-                        print "%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
-                          % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n])
+                        print("%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
+                          % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n]))
                     
                     for n in range(len(time)-dumplength,len(time)):
-                        print "%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
-                          % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n])
+                        print("%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
+                          % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n]))
             else:
                 print "NO OBSERVATIONS FOUND FOR ", variable.upper()
         
@@ -2311,7 +2308,7 @@ def main(argv=None):
     parser.add_option("-f", "--file",        dest="file",      type="string", help = "Filename of ascii or PyDART file for conversion/search")
     parser.add_option("-l", "--list",        dest="list",      default=False, help = "Boolean flag to list basic contents of the file",            action="store_true")
     parser.add_option(      "--stats",       dest="stats",     default=False, help = "Gives basic stats for variable, helpful to compare files",   action="store_true")
-    parser.add_option("-d", "--dir",         dest="dir",       default=None,  nargs=2, type="string", help = "Directory of files to process and suffix [.out, .h5]") 
+    parser.add_option("-d", "--dir",         dest="dir",       default=None,  nargs=2, type="string", help = "Directory of files to process and file suffix [*.out, *VR.h5]") 
     parser.add_option(      "--ascii2hdf",   dest="ascii2hdf", default=False, help = "Boolean flag to convert ascii DART file to HDF5 DARTfile",   action="store_true")
     parser.add_option(      "--hdf2ascii",   dest="hdf2ascii", default=False, help = "Boolean flag to convert HDF5 DART file to ascii DART file",  action="store_true")
     parser.add_option(      "--nc2hdf",      dest="nc2hdf",    type="string", help = "File name of file or directory to convert netcdf W2 files to HDF5-DART")
@@ -2333,9 +2330,7 @@ def main(argv=None):
     parser.add_option(      "--lat_box",     dest="lat_box",   default=None,  type = "float",  nargs=2, help = "Search for MRMS within these lat limits. Usage:  --lat_box lat_south lat_north")
     parser.add_option(      "--lon_box",     dest="lon_box",   default=None,  type = "float",  nargs=2, help = "Search for MRMS within these lon limits. Usage:  --lon_box lon_west lon_east")
     parser.add_option(      "--obserror",    dest="obserror",  default=None,  type = "string", nargs=2, action="append", help = "Change the stored standard deviation of a observational type. Usage: --obserror DBZ 3.0")   
-    parser.add_option(      "--merge",       dest="merge",     default=None,  type = "string", nargs=2, action="append", help = "Names of two files to merge OR   \
-                                                                                               to merge a series of h5 files, one can put 'D directory_path' and merge \
-                                                                                               all the h5 files files in the directory")   
+    parser.add_option(      "--merge",       dest="merge",     default=False, type = "string", help = "Boolean flag to merge several HDF5 obs_seq files", action="store_true")
     parser.add_option(      "--correctens",  dest="correctens",default=False, help = "Boolean flag to dump out observed reflectivity to be ingested into correct_ensemble", action="store_true")   
     parser.add_option(      "--addindex",    dest="addindex",  default=False, help = "Boolean flag to create indices for faster search", action="store_true")   
     parser.add_option(      "--scatter",     dest="scatter",   default=False, help = "Boolean flag to scatterplot observations data", action="store_true")
@@ -2380,10 +2375,8 @@ def main(argv=None):
 
     else:
 
-#       suffix = os.path.splitext(options.dir[1])
         suffix = options.dir[1]
-        in_filenames = glob.glob("%s/*%s" % (os.path.abspath(options.dir[0]), suffix))
-#       print("\n pyDart:  files in the directory:  %s\n" % (in_filenames))
+        in_filenames = glob.glob("%s/%s" % (os.path.abspath(options.dir[0]), suffix))
         print("\n pyDart:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dir[0]))
         print("\n pyDart:  First file is %s\n" % (in_filenames[0]))
         print("\n pyDart:  Last  file is %s\n" % (in_filenames[-1]))
@@ -2391,7 +2384,6 @@ def main(argv=None):
     if options.ascii2hdf:
 
         for file in in_filenames:
-            print file
             if file[-3:] == "out":
                 if options.verbose:
                     print "\n  PyDart:  converting ASCII DART file:  ", file
@@ -2400,7 +2392,6 @@ def main(argv=None):
                 print "\n PyDart:  Completed convertion, PyDART file:  ", myDART.hdf5
             else:
                 print "\n File is not labeled `.out`, please rename file..."
-                sys.exit(1)
     
     if options.start != None:           # Convert start flag to tuple for search
         char = options.start.split(",")
@@ -2510,15 +2501,17 @@ def main(argv=None):
       print
     
     if options.hdf2ascii:
-        if myDART.index != None:
-            if myDART.verbose:  print "\n PyDart:  converting HDF5 DART file:  ", options.file
-            myDART.file(filename = options.file)
-            myDART.hdf2ascii(obs_error=options.obserror)
-            if myDART.verbose:  print "PyDart:  Completed convertion, PyDART file:  ", myDART.ascii
-        else:
-            print "\n PyDart:  No search indices supplied, so converting entire h5 file to ascii\n"
-            myDART.file(filename = options.file)
-            myDART.hdf2ascii(obs_error=options.obserror)
+
+        for file in in_filenames:
+            if myDART.index != None:
+                if myDART.verbose:  print "\n PyDart:  converting HDF5 DART file:  ", file
+                myDART.file(filename = file)
+                myDART.hdf2ascii(obs_error=options.obserror)
+                if myDART.verbose:  print "PyDart:  Completed convertion, PyDART file:  ", myDART.ascii
+            else:
+                print "\n PyDart:  No search indices supplied, so converting entire h5 file to ascii\n"
+                myDART.file(filename = file)
+                myDART.hdf2ascii(obs_error=options.obserror)
 
     if options.nc2hdf:
         myDART.file(filename = options.file)
@@ -2547,7 +2540,12 @@ def main(argv=None):
         if myDART.verbose:  print "PyDart:  Completed convertion, PyDART file:  "
        
     if options.merge and options.file:
-        mergeTables(options.file, options.merge[0])
+        if len(in_filenames) > 2:
+            mergeTables(options.file, in_filenames)
+        else:
+            print("\n You need to specify a directory and a grep pattern for the two files you want merged using '-d dir grep_pattern' \n")
+            print("\n You need to specify a directory and a grep pattern for the two files you want merged using '-d dir grep_pattern' \n")
+            sys.exit(0)
    
     if options.DartTimes:
         if options.verbose:
