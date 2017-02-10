@@ -2330,7 +2330,7 @@ def main(argv=None):
     parser.add_option(      "--lat_box",     dest="lat_box",   default=None,  type = "float",  nargs=2, help = "Search for MRMS within these lat limits. Usage:  --lat_box lat_south lat_north")
     parser.add_option(      "--lon_box",     dest="lon_box",   default=None,  type = "float",  nargs=2, help = "Search for MRMS within these lon limits. Usage:  --lon_box lon_west lon_east")
     parser.add_option(      "--obserror",    dest="obserror",  default=None,  type = "string", nargs=2, action="append", help = "Change the stored standard deviation of a observational type. Usage: --obserror DBZ 3.0")   
-    parser.add_option(      "--merge",       dest="merge",     default=False, type = "string", help = "Boolean flag to merge several HDF5 obs_seq files", action="store_true")
+    parser.add_option(      "--merge",       dest="merge",     default=False, help = "Boolean flag to merge several HDF5 obs_seq files", action="store_true")
     parser.add_option(      "--correctens",  dest="correctens",default=False, help = "Boolean flag to dump out observed reflectivity to be ingested into correct_ensemble", action="store_true")   
     parser.add_option(      "--addindex",    dest="addindex",  default=False, help = "Boolean flag to create indices for faster search", action="store_true")   
     parser.add_option(      "--scatter",     dest="scatter",   default=False, help = "Boolean flag to scatterplot observations data", action="store_true")
