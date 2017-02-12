@@ -1,13 +1,10 @@
 #!/bin/csh 
 
-getnexrad.py --start 2016,5,10,0 --end 2016,5,10,5 -r KFWS >& out_fws &
-getnexrad.py --start 2016,5,10,0 --end 2016,5,10,5 -r KFDR >& out_fdr &
-getnexrad.py --start 2016,5,10,0 --end 2016,5,10,5 -r KICT >& out_ict &
-getnexrad.py --start 2016,5,10,0 --end 2016,5,10,5 -r KINX >& out_inx &
-getnexrad.py --start 2016,5,10,0 --end 2016,5,10,5 -r KLZK >& out_lzk &
-getnexrad.py --start 2016,5,10,0 --end 2016,5,10,5 -r KPOE >& out_poe &
-getnexrad.py --start 2016,5,10,0 --end 2016,5,10,5 -r KSGF >& out_sgf &
-getnexrad.py --start 2016,5,10,0 --end 2016,5,10,5 -r KSRX >& out_srx &
-getnexrad.py --start 2016,5,10,0 --end 2016,5,10,5 -r KTLX >& out_tlx &
-getnexrad.py --start 2016,5,10,0 --end 2016,5,10,5 -r KVNX >& out_vnx &
-getnexrad.py --start 2016,5,10,0 --end 2016,5,10,5 -r KSHV >& out_shv &
+set rad_name = ( KDDC KTLX KVNX KICT KLZK KINX KAMA KSRX KTWX KFDR KGLD KOAX KSGF KDMX KLNX KUEX KEAX )
+set start = "2016,5,23,18"
+set stop  = "2016,5,24,05"
+
+foreach radar ($rad_name)
+  echo $radar
+  getnexrad.py --start $start --end $stop -r $radar >& out_$radar &
+end
