@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 #############################################################
-#  script to downloiad NEXRAD LVL2 files from Amazon S3
-#   and process them to create VR superob files 
+#
+#  script to download large numbers of NEXRAD LVL2 files 
+#  from Amazon S3 and process them to create VR superob files 
+#  in HDF5 and DART obs_seq files
 #
 #  Python requirements:  boto3 install
 #
@@ -21,25 +23,38 @@ import datetime as DT
 from multiprocessing import Pool
 import time as cpu
 
+#=======================================================================================================================
+# Definitions
 
-_region        = 'us-east-1'
-_delta_t       = DT.timedelta(hours=1)  
-_prep_string   = "prep_nexrad.py --start %s --end %s -r %s >& out_%s %s "
-_wget_string   = "wget https://noaa-nexrad-level2.s3.amazonaws.com/"
-_pyRoth_string = "pyROTH.py -d %s -u None -w -o roth_%s >& log_%s"
-_pyDart_string = 'pyDart.py -d roth_%s "*VR.out" --ascii2hdf >& log_%s'
-_merge_string  = 'pyDart.py -f %s -d roth_%s "*VR.h5" --merge >& log_%s'
-
-debug = True
 _nthreads = 2
 
-#=======================================================================================================================
-# RunMember is a function that runs a system command
+_region        = 'us-east-1'
 
-def RunMember(cmd):
+_delta_t       = DT.timedelta(hours=1)  
+
+_wget_string   = "wget https://noaa-nexrad-level2.s3.amazonaws.com/"
+
+_prep_string   = "prep_nexrad.py --start %s --end %s -r %s >& out_prep_%s %s "
+
+_pyRoth_string = "pyROTH.py -d %s -u None -w -o roth_%s >& log_roth_%s"
+
+_pyDart_string = 'pyDart.py -d roth_%s "*VR.out" --ascii2hdf >& log_dart_%s'
+
+_merge_string  = 'pyDart.py -f %s -d roth_%s "*VR.h5" --merge >& log_merge_%s'
+
+debug = True
+
+#=======================================================================================================================
+# RunProcess is a function that runs a system command for parallel processing
+
+def RunProcess(cmd):
+
     print("\n Executing command:  %s " % cmd)
+
     os.system(cmd)
+
     print("\n %s completed...." % cmd)
+
     return
 
 #=======================================================================================================================
@@ -67,7 +82,7 @@ def parse_NEWSe_radar_file(radar_file_csh, start, finish):
 #=======================================================================================================================
 # getS3filelist
 
-def getfilelist(radar, datetime):
+def getsS3FileList(radar, datetime):
 
 
     noaas3 = boto3.client('s3', region_name = _region)
@@ -75,15 +90,13 @@ def getfilelist(radar, datetime):
     files = []
 
     prefix = "%s/%s/" % (datetime.strftime("%Y/%m/%d"), radar)
-    print prefix
+
+    if debug:
+        print(" \n getS3FileList string: %s \n" % prefix)
 
     file_list = noaas3.list_objects_v2(Bucket='noaa-nexrad-level2', Delimiter='/', Prefix=prefix)
 
     for i in file_list['Contents'][:]:
-
-#HERE YOU CAN SUBSET THE FULL LIST of radar key which looks like: HERE I just grab the 23utc files.  
-
-# '2016/05/23/KTLX/KTLX20110427_000157_V03.gz'
 
         if i['Key'][-2::] == 'gz' and i['Key'][-13:-11] == datetime.strftime("%H"):
             files.append(i['Key'])
@@ -105,7 +118,7 @@ if __name__ == "__main__":
     parser = OptionParser()
 
     parser.add_option(      "--newse",    dest="newse",    type="string", default=None, \
-                                      help = "NEWSe radars description file to parse" )
+                                      help = "NEWSe radars description file to parse and run prep_nexrad on" )
 
     parser.add_option("-r", "--radar",    dest="radar",    type="string", default=None, \
                                       help = "What radar to download")
@@ -114,7 +127,7 @@ if __name__ == "__main__":
                                      help = "Start time of search in YYYY,MM,DD,HH")
 
     parser.add_option(      "--end",      dest="end",      type="string", default=None,  \
-                                     help = "End time of search in YYYY,MM,DD,HH,MM")
+                                     help = "End time of search in YYYY,MM,DD,HH")
 
     parser.add_option("-d", "--dir",      dest="dir",      type="string", default=None,  \
                                      help = "directory for radar files")
@@ -173,16 +186,16 @@ if __name__ == "__main__":
 
     filelist = []
 
-    begin = start 
+    ctime = start 
     
-    while begin < finish:
+    while ctime < finish:
 
-        newfiles = getfilelist(radar, begin)
+        newfiles = getSEFileList(radar, ctime)
 
         for nf in newfiles:
             filelist.append(nf)
 
-        begin = begin + _delta_t
+        ctime = ctime + _delta_t
 
 # Download each file and put it into a directory
 
@@ -199,7 +212,7 @@ if __name__ == "__main__":
             if debug:
                 print(cmd)
             
-            pool.apply_async(RunMember, (cmd,))
+            pool.apply_async(RunProcess, (cmd,))
     
         pool.close()
         pool.join()
