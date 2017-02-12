@@ -74,15 +74,17 @@ def parse_NEWSe_radar_file(radar_file_csh, start, finish):
     for radar in radar_list:
         print(" \n Now processing %s \n " % radar)
 
-        cmd = _prep_string % ( start, finish, radar, radar, "&" )
+        cmd = _prep_string % ( start.strftime("%Y,%m,%d,%H"), finish.strftime("%Y,%m,%d,%H"), radar, radar, "&" )
         
         if debug:
             print(cmd)
 
+        os.system(cmd)
+
 #=======================================================================================================================
 # getS3filelist
 
-def getsS3FileList(radar, datetime):
+def getS3FileList(radar, datetime):
 
 
     noaas3 = boto3.client('s3', region_name = _region)
@@ -190,7 +192,7 @@ if __name__ == "__main__":
     
     while ctime < finish:
 
-        newfiles = getSEFileList(radar, ctime)
+        newfiles = getS3FileList(radar, ctime)
 
         for nf in newfiles:
             filelist.append(nf)
