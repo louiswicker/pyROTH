@@ -24,6 +24,7 @@ import time as cpu
 
 _region        = 'us-east-1'
 _delta_t       = DT.timedelta(hours=1)  
+_prep_string   = "prep_nexrad.py --start %s --end %s -r %s >& out_%s %s "
 _wget_string   = "wget https://noaa-nexrad-level2.s3.amazonaws.com/"
 _pyRoth_string = "pyROTH.py -d %s -u None -w -o roth_%s >& log_%s"
 _pyDart_string = 'pyDart.py -d roth_%s "*VR.out" --ascii2hdf >& log_%s'
@@ -40,6 +41,28 @@ def RunMember(cmd):
     os.system(cmd)
     print("\n %s completed...." % cmd)
     return
+
+#=======================================================================================================================
+# Parse and run NEWS csh radar file
+
+def parse_NEWSe_radar_file(radar_file_csh, start, finish):
+
+# Parse radars out of the shell script - NOTE - line that contains radar list is line=6 HARDCODED
+
+    fhandle    = open(radar_file_csh)
+    all_lines  = fhandle.readlines()
+    radar_list = all_lines[6].split("(")[1].split(")")[0].split()
+    fhandle.close()
+
+# Now create the calls to prep_nexrad.py
+    
+    for radar in radar_list:
+        print(" \n Now processing %s \n " % radar)
+
+        cmd = _prep_string % ( start, finish, radar, radar, "&" )
+        
+        if debug:
+            print(cmd)
 
 #=======================================================================================================================
 # getS3filelist
@@ -80,11 +103,30 @@ if __name__ == "__main__":
 # Command line interface 
 #
     parser = OptionParser()
-    parser.add_option("-r", "--radar",    dest="radar",    type="string", default=None,      help = "What radar to download")
-    parser.add_option(      "--start",    dest="start",    type="string", default=None,      help = "Start time of search in YYYY,MM,DD,HH")
-    parser.add_option(      "--end",      dest="end",      type="string", default=None,      help = "End time of search in YYYY,MM,DD,HH,MM")
-    parser.add_option("-d", "--dir",      dest="dir",      type="string", default=None,      help = "directory for radar files")
-    parser.add_option(      "--nthreads", dest="nthreads", type="int",    default=_nthreads, help = "Number of download threads to run")
+
+    parser.add_option(      "--newse",    dest="newse",    type="string", default=None, \
+                                      help = "NEWSe radars description file to parse" )
+
+    parser.add_option("-r", "--radar",    dest="radar",    type="string", default=None, \
+                                      help = "What radar to download")
+
+    parser.add_option(      "--start",    dest="start",    type="string", default=None,  \
+                                     help = "Start time of search in YYYY,MM,DD,HH")
+
+    parser.add_option(      "--end",      dest="end",      type="string", default=None,  \
+                                     help = "End time of search in YYYY,MM,DD,HH,MM")
+
+    parser.add_option("-d", "--dir",      dest="dir",      type="string", default=None,  \
+                                     help = "directory for radar files")
+
+    parser.add_option(      "--nthreads", dest="nthreads", type="int",    default=_nthreads, \
+                                     help = "Number of download threads to run")
+
+    parser.add_option("-n", "--noget",    dest="no_get",   default=False, \
+                                     help = "Boolean flag to skip downloading files", action="store_true")
+
+    parser.add_option(      "--noanal",   dest="no_anal",    default=False, \
+                                     help = "Boolean flag to skip doing pyRoth analysis step", action="store_true")
 
     (options, args) = parser.parse_args()
 
@@ -104,6 +146,11 @@ if __name__ == "__main__":
     else:
         finish  = DT.datetime.strptime(options.end, "%Y,%m,%d,%H")
 
+    if options.newse:
+       print(" \n now processing NEWSe radar file....\n ")
+       parse_NEWSe_radar_file(options.newse, start, finish)
+       sys.exit(0)
+        
     if options.radar == None:
         print "\n                NO RADAR SUPPLIED, EXITING.... \n "
         parser.print_help()
@@ -139,25 +186,27 @@ if __name__ == "__main__":
 
 # Download each file and put it into a directory
 
-    c0 = cpu.time()
-    
-    pool = Pool(processes=options.nthreads)              # set up a queue to run
-    
-    for file in filelist:
-    
-        cmd = "%s%s -P %s" % (_wget_string, file, out_dir)
-            
-        if debug:
-            print(cmd)
-            
-        pool.apply_async(RunMember, (cmd,))
-    
-    pool.close()
-    pool.join()
+    if not options.no_get:   # you might have already downloaded the files
 
-    cpu0 = cpu.time() - c0
+        c0 = cpu.time()
     
-    print "\nDownload from Amazon took   %f  secs\n" % (round(cpu0, 3))
+        pool = Pool(processes=options.nthreads)              # set up a queue to run
+    
+        for file in filelist:
+        
+            cmd = "%s%s -P %s" % (_wget_string, file, out_dir)
+            
+            if debug:
+                print(cmd)
+            
+            pool.apply_async(RunMember, (cmd,))
+    
+        pool.close()
+        pool.join()
+
+        cpu0 = cpu.time() - c0
+    
+        print "\nDownload from Amazon took   %f  secs\n" % (round(cpu0, 3))
 
 # Process the radar files 
 
@@ -165,10 +214,12 @@ if __name__ == "__main__":
     
 # Create superobs
 
-    cmd = _pyRoth_string % ( radar, radar, radar )
-    if debug:
-        print(cmd)
-    os.system(cmd)
+    if not options.no_anal:     # this might have already been done
+
+        cmd = _pyRoth_string % ( radar, radar, radar )
+        if debug:
+            print(cmd)
+        os.system(cmd)
 
 # Convert to h5 pyDart
 

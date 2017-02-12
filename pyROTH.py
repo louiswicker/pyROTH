@@ -1248,6 +1248,14 @@ if __name__ == "__main__":
       print '\n Writing: {}\n'.format(out_filenames[n])
    
       tim0 = timeit.time()
+
+# the check for file size is to make sure there is data in the LVL2 file
+      try:
+          if os.path.getsize(fname) < 2048000:
+              print '\n File {} is less than 2 mb, skipping...\n'.format(fname)
+              pass
+      except:
+          pass
       
       if fname[-3:] == ".nc":
         if _radar_parameters['field_label_trans'][0] == True:
