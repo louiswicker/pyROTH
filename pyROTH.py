@@ -472,7 +472,7 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
       i = it.multi_index[2]
       
       if data.mask[k,j,i] == True:   # bad values
-          pass
+          continue
       else:          
           nobs += 1
   
@@ -1192,8 +1192,14 @@ if __name__ == "__main__":
     print("\n pyROTH:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dname))
     print("\n pyROTH:  First file is %s\n" % (in_filenames[0]))
     print("\n pyROTH:  Last  file is %s\n" % (in_filenames[-1]))
-    print("\n pyROTH:  Last  file is %s\n" % (in_filenames[0][-3:]))
- 
+
+# remove duplicate filenames
+
+    for item in in_filenames:
+      if item[-3:] != ".gz":
+        print("\n pyROTH removing file:  %s \n" % item)
+        os.remove(item)
+
     if in_filenames[0][-3:] == "V06" or in_filenames[0][-6:] == "V06.gz":
       for item in in_filenames:
         strng = os.path.basename(item)[0:17]
@@ -1253,9 +1259,9 @@ if __name__ == "__main__":
       try:
           if os.path.getsize(fname) < 2048000:
               print '\n File {} is less than 2 mb, skipping...\n'.format(fname)
-              pass
+              continue
       except:
-          pass
+          continue
       
       if fname[-3:] == ".nc":
         if _radar_parameters['field_label_trans'][0] == True:
@@ -1265,10 +1271,14 @@ if __name__ == "__main__":
         else:
             volume = pyart.io.read_cfradial(fname)
       else:
-        volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
-                                              additional_metadata=None, file_field_names=False, 
-                                              delay_field_loading=False, 
-                                              station=None, scans=None, linear_interp=True)
+        try:
+            volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
+                                                  additional_metadata=None, file_field_names=False, 
+                                                  delay_field_loading=False, 
+                                                  station=None, scans=None, linear_interp=True)
+        except:
+            print("\n Could not read lvl2 file, passing it by\n")
+            continue
 
       pyROTH_io_cpu = timeit.time() - tim0
   
