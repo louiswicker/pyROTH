@@ -28,6 +28,8 @@ import time as cpu
 
 _nthreads = 2
 
+_chk_dir_size = 300
+
 _region        = 'us-east-1'
 
 _delta_t       = DT.timedelta(hours=1)  
@@ -58,6 +60,15 @@ def RunProcess(cmd):
     return
 
 #=======================================================================================================================
+def get_folder_size(start_path = '.'):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(start_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            total_size += os.path.getsize(fp)
+    return total_size
+
+#=======================================================================================================================
 # Parse and run NEWS csh radar file
 
 def parse_NEWSe_radar_file(radar_file_csh, start, finish):
@@ -81,6 +92,15 @@ def parse_NEWSe_radar_file(radar_file_csh, start, finish):
 
         os.system(cmd)
 
+    old_size = 0
+    new_size = get_folder_size(start_path = '.')
+    cpu.sleep(_chk_dir_size)
+    while old_size < new_size:
+         old_size = new_size
+         new_size = get_folder_size(start_path = '.')
+         cpu.sleep(_chk_dir_size)
+
+    return
 #=======================================================================================================================
 # getS3filelist
 
