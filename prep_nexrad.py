@@ -36,7 +36,7 @@ _delta_t       = DT.timedelta(hours=1)
 
 _wget_string   = "wget https://noaa-nexrad-level2.s3.amazonaws.com/"
 
-_prep_string   = "prep_nexrad.py --start %s --end %s -r %s >& out_prep_%s %s "
+_prep_string   = "prep_nexrad.py --start %s --end %s %s -r %s >& out_prep_%s %s "
 
 _pyRoth_string = "pyROTH.py -d %s -u None -w -o roth_%s >& log_roth_%s"
 
@@ -71,7 +71,7 @@ def get_folder_size(start_path = '.'):
 #=======================================================================================================================
 # Parse and run NEWS csh radar file
 
-def parse_NEWSe_radar_file(radar_file_csh, start, finish):
+def parse_NEWSe_radar_file(radar_file_csh, start, finish, no_down=False):
 
 # Parse radars out of the shell script - NOTE - line that contains radar list is line=6 HARDCODED
 
@@ -85,7 +85,10 @@ def parse_NEWSe_radar_file(radar_file_csh, start, finish):
     for radar in radar_list:
         print(" \n Now processing %s \n " % radar)
 
-        cmd = _prep_string % ( start.strftime("%Y,%m,%d,%H"), finish.strftime("%Y,%m,%d,%H"), radar, radar, "&" )
+        if no_down:
+            cmd = _prep_string % ( start.strftime("%Y,%m,%d,%H"), finish.strftime("%Y,%m,%d,%H"), "--nodown", radar, radar, "&" )
+        else:
+            cmd = _prep_string % ( start.strftime("%Y,%m,%d,%H"), finish.strftime("%Y,%m,%d,%H"), "", radar, radar, "&" )
         
         if debug:
             print(cmd)
@@ -157,7 +160,7 @@ if __name__ == "__main__":
     parser.add_option(      "--nthreads", dest="nthreads", type="int",    default=_nthreads, \
                                      help = "Number of download threads to run")
 
-    parser.add_option("-n", "--noget",    dest="no_get",   default=False, \
+    parser.add_option("-n", "--nodown",    dest="no_down",   default=False, \
                                      help = "Boolean flag to skip downloading files", action="store_true")
 
     parser.add_option(      "--noanal",   dest="no_anal",    default=False, \
@@ -183,7 +186,7 @@ if __name__ == "__main__":
 
     if options.newse:
        print(" \n now processing NEWSe radar file....\n ")
-       parse_NEWSe_radar_file(options.newse, start, finish)
+       parse_NEWSe_radar_file(options.newse, start, finish, no_down=options.no_down)
        sys.exit(0)
         
     if options.radar == None:
@@ -221,7 +224,7 @@ if __name__ == "__main__":
 
 # Download each file and put it into a directory
 
-    if not options.no_get:   # you might have already downloaded the files
+    if not options.no_down:   # you might have already downloaded the files
 
         c0 = cpu.time()
     

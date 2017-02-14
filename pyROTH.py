@@ -62,7 +62,7 @@ _grid_dict = {
               'min_weight'      : 0.2,          # min weight for analysis Cressman ~ 0.3, Barnes ~ 2
               'min_range'       : 10000.,        # min distance away from the radar for valid analysis (meters)
               'projection'      : 'lcc',       # map projection to use for gridded data
-              'mask_vr_with_dbz': False,
+              'mask_vr_with_dbz': True,
               '0dbz_obtype'     : False,
               'thin_zeros'      : 4,
               'halo_footprint'  : 3,
@@ -163,7 +163,7 @@ def dbz_masking(ref, thin_zeros=2):
               ref.data.mask[n] = np.logical_or(mask1, mask2)
 
   if _grid_dict['max_height'] > 0:
-      mask1  = (ref.zg > _grid_dict['max_height'])  
+      mask1  = (ref.zg - ref.radar_hgt) > _grid_dict['max_height']
       mask2 = ref.data.mask
       ref.data.mask = np.logical_or(mask1, mask2)
         
@@ -186,9 +186,12 @@ def vel_masking(vel, ref, volume):
        vel.data.mask[m] = np.logical_or(vel.data.mask[m], mask1)
         
    if _grid_dict['max_height'] > 0:
-      mask1  = (vel.zg - vel.radar_hgt > _grid_dict['max_height'])  
+      mask1 = (vel.zg - vel.radar_hgt) > _grid_dict['max_height']
+      print "size of height mask: ", np.sum(mask1)
       mask2 = vel.data.mask
+      print "size of ref mask ", np.sum(mask2)
       vel.data.mask = np.logical_or(mask1, mask2)
+      print "size of new mask ", np.sum(vel.data.mask)
       
    return vel
     
@@ -472,7 +475,7 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
       i = it.multi_index[2]
       
       if data.mask[k,j,i] == True:   # bad values
-          continue
+          pass
       else:          
           nobs += 1
   
@@ -764,6 +767,7 @@ def grid_data(volume, field):
   tt = timeit.clock()
   
   for n, sweep_data in enumerate(volume.iter_field(field)):
+    print n
     if n == 0:
       begin = 0
       end   = volume.sweep_end_ray_index['data'][n] + 1
@@ -1192,14 +1196,8 @@ if __name__ == "__main__":
     print("\n pyROTH:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dname))
     print("\n pyROTH:  First file is %s\n" % (in_filenames[0]))
     print("\n pyROTH:  Last  file is %s\n" % (in_filenames[-1]))
-
-# remove duplicate filenames
-
-    for item in in_filenames:
-      if item[-3:] != ".gz":
-        print("\n pyROTH removing file:  %s \n" % item)
-        os.remove(item)
-
+    print("\n pyROTH:  Last  file is %s\n" % (in_filenames[0][-3:]))
+ 
     if in_filenames[0][-3:] == "V06" or in_filenames[0][-6:] == "V06.gz":
       for item in in_filenames:
         strng = os.path.basename(item)[0:17]
@@ -1271,14 +1269,10 @@ if __name__ == "__main__":
         else:
             volume = pyart.io.read_cfradial(fname)
       else:
-        try:
-            volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
-                                                  additional_metadata=None, file_field_names=False, 
-                                                  delay_field_loading=False, 
-                                                  station=None, scans=None, linear_interp=True)
-        except:
-            print("\n Could not read lvl2 file, passing it by\n")
-            continue
+        volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
+                                              additional_metadata=None, file_field_names=False, 
+                                              delay_field_loading=False, 
+                                              station=None, scans=None, linear_interp=True)
 
       pyROTH_io_cpu = timeit.time() - tim0
   
