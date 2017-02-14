@@ -1269,10 +1269,14 @@ if __name__ == "__main__":
         else:
             volume = pyart.io.read_cfradial(fname)
       else:
-        volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
-                                              additional_metadata=None, file_field_names=False, 
-                                              delay_field_loading=False, 
-                                              station=None, scans=None, linear_interp=True)
+        try:
+          volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
+                                                additional_metadata=None, file_field_names=False, 
+                                                delay_field_loading=False, 
+                                                station=None, scans=None, linear_interp=True)
+        except:
+          print '\n File {} cannot be read, skipping...\n'.format(fname)
+          continue
 
       pyROTH_io_cpu = timeit.time() - tim0
   
