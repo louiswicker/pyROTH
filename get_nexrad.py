@@ -5,7 +5,8 @@
 #  from Amazon S3 and process them to create VR superob files 
 #  in HDF5 and DART obs_seq files
 #
-#  Python requirements:  boto3 install
+#  Extra Python requirements:  a boto3 install
+#       this is the software interface to AWS
 #
 #############################################################
 #
@@ -28,7 +29,7 @@ import time as cpu
 
 _nthreads = 2
 
-_chk_dir_size = 300
+_chk_dir_size  = 300
 
 _region        = 'us-east-1'
 
@@ -37,12 +38,6 @@ _delta_t       = DT.timedelta(hours=1)
 _wget_string   = "wget -c https://noaa-nexrad-level2.s3.amazonaws.com/"
 
 _prep_string   = "prep_nexrad.py --start %s --end %s %s -r %s >& out_prep_%s %s "
-
-_pyRoth_string = "pyROTH.py -d %s -u None -w -o roth_%s >& log_roth_%s"
-
-_pyDart_string = 'pyDart.py -d roth_%s "*VR.out" --ascii2hdf >& log_dart_%s'
-
-_merge_string  = 'pyDart.py -f %s -d roth_%s "*VR.h5" --merge >& log_merge_%s'
 
 debug = True
 
@@ -85,10 +80,7 @@ def parse_NEWSe_radar_file(radar_file_csh, start, finish, no_down=False):
     for radar in radar_list:
         print(" \n Now processing %s \n " % radar)
 
-        if no_down:
-            cmd = _prep_string % ( start.strftime("%Y,%m,%d,%H"), finish.strftime("%Y,%m,%d,%H"), "--nodown", radar, radar, "&" )
-        else:
-            cmd = _prep_string % ( start.strftime("%Y,%m,%d,%H"), finish.strftime("%Y,%m,%d,%H"), "", radar, radar, "&" )
+        cmd = _prep_string % ( start.strftime("%Y,%m,%d,%H"), finish.strftime("%Y,%m,%d,%H"), "", radar, radar, "&" )
         
         if debug:
             print(cmd)
@@ -143,7 +135,7 @@ if __name__ == "__main__":
     parser = OptionParser()
 
     parser.add_option(      "--newse",    dest="newse",    type="string", default=None, \
-                                      help = "NEWSe radars description file to parse and run prep_nexrad on" )
+                                      help = "NEWSe radars description file to parse and run get_nexrad on" )
 
     parser.add_option("-r", "--radar",    dest="radar",    type="string", default=None, \
                                       help = "What radar to download")
@@ -159,12 +151,6 @@ if __name__ == "__main__":
 
     parser.add_option(      "--nthreads", dest="nthreads", type="int",    default=_nthreads, \
                                      help = "Number of download threads to run")
-
-    parser.add_option("-n", "--nodown",    dest="no_down",   default=False, \
-                                     help = "Boolean flag to skip downloading files", action="store_true")
-
-    parser.add_option(      "--noanal",   dest="no_anal",    default=False, \
-                                     help = "Boolean flag to skip doing pyRoth analysis step", action="store_true")
 
     (options, args) = parser.parse_args()
 
@@ -224,57 +210,22 @@ if __name__ == "__main__":
 
 # Download each file and put it into a directory
 
-    if not options.no_down:   # you might have already downloaded the files
-
-        c0 = cpu.time()
-    
-        pool = Pool(processes=options.nthreads)              # set up a queue to run
-    
-        for file in filelist:
-        
-            cmd = "%s%s -P %s" % (_wget_string, file, out_dir)
-            
-            if debug:
-                print(cmd)
-            
-            pool.apply_async(RunProcess, (cmd,))
-    
-        pool.close()
-        pool.join()
-
-        cpu0 = cpu.time() - c0
-    
-        print "\nDownload from Amazon took   %f  secs\n" % (round(cpu0, 3))
-
-# Process the radar files 
-
     c0 = cpu.time()
     
-# Create superobs
-
-    if not options.no_anal:     # this might have already been done
-
-        cmd = _pyRoth_string % ( radar, radar, radar )
+    pool = Pool(processes=options.nthreads)              # set up a queue to run
+    
+    for file in filelist:
+        
+        cmd = "%s%s -P %s" % (_wget_string, file, out_dir)
+            
         if debug:
             print(cmd)
-        os.system(cmd)
-
-# Convert to h5 pyDart
-
-    cmd = _pyDart_string % ( radar, radar )
-    if debug:
-        print(cmd)
-    os.system(cmd)
+            
+        pool.apply_async(RunProcess, (cmd,))
     
-# Merge the h5 files
+    pool.close()
+    pool.join()
 
-    VR_file = "obs_seq_%s_%s_VR.h5" % (start.strftime("%Y_%m_%d"), radar)
-    cmd = _merge_string % ( VR_file, radar, radar )
-    if debug:
-        print(cmd)
-        
-    os.system(cmd)
-    
     cpu0 = cpu.time() - c0
     
-    print "\nProcessing %s files took   %f  secs\n" % (radar, round(cpu0, 3))
+    print "\nDownload from Amazon took   %f  secs\n" % (round(cpu0, 3))
