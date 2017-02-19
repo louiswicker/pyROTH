@@ -551,18 +551,24 @@ def mergeTables(table_new, tables, addindex=True):
         print "Finished appending all table rows...."
         print "New table:    ", table1
         
-        indexrows = table1.cols.utime.create_index()
-        indexrows = table1.cols.kind.create_index()
+        indexrows = table1.cols.utime.create_csindex()
+#         indexrows = table1.cols.kind.create_index()
         
         group_header = h5file1.root.header
         group_header.attributes.cols.last[0]        = table1.nrows
         group_header.attributes.cols.max_num_obs[0] = table1.nrows
         group_header.attributes.cols.num_obs[0]     = table1.nrows
+        
+        table_obs = h5file1.create_table(group_obs, 'observations', DART_obs, 'Observations from DART file')
 
         h5file1.close()
 
         return
 
+#===============================================================================
+def sortTable(table):
+
+    print "sortTable called"
 #===============================================================================
 class pyDART():
 
@@ -706,6 +712,13 @@ class pyDART():
         
         h5file.close()
         
+        return
+
+#-------------------------------------------------------------------------------
+# A quick routine to grid pyDART data
+    
+    def sortTable(self, re_index=False):
+    
         return
 
 #-------------------------------------------------------------------------------
@@ -2038,9 +2051,12 @@ class pyDART():
         
         if self.index == None:
             self.index = N.arange(table.nrows)
+            
+#select_table = table.copy(self.index)
         
         n = 0
         for row in table.itersequence(self.index):
+#         for row in table.itersorted('utime', checkCSI=True):
             n += 1
             
             fi.write(" OBS            %d\n" % n )
@@ -2331,6 +2347,7 @@ def main(argv=None):
     parser.add_option(      "--lon_box",     dest="lon_box",   default=None,  type = "float",  nargs=2, help = "Search for MRMS within these lon limits. Usage:  --lon_box lon_west lon_east")
     parser.add_option(      "--obserror",    dest="obserror",  default=None,  type = "string", nargs=2, action="append", help = "Change the stored standard deviation of a observational type. Usage: --obserror DBZ 3.0")   
     parser.add_option(      "--merge",       dest="merge",     default=False, help = "Boolean flag to merge several HDF5 obs_seq files", action="store_true")
+    parser.add_option(      "--sort",       dest="sort",     default=False, help = "Boolean flag to sort pyDart table in ascending order", action="store_true")
     parser.add_option(      "--correctens",  dest="correctens",default=False, help = "Boolean flag to dump out observed reflectivity to be ingested into correct_ensemble", action="store_true")   
     parser.add_option(      "--addindex",    dest="addindex",  default=False, help = "Boolean flag to create indices for faster search", action="store_true")   
     parser.add_option(      "--scatter",     dest="scatter",   default=False, help = "Boolean flag to scatterplot observations data", action="store_true")
@@ -2450,7 +2467,17 @@ def main(argv=None):
         loc.append( "(" + str(zloc[0]) + " <= z )" )
         loc.append( "( z <= " + str(zloc[1]) + ")" )
         options.search = True
-    
+        
+    if options.search:   # Do a search and return the index of that search
+        if options.file[-2:] == "h5":
+            myDART.file(filename = options.file)
+            myDART.sort()
+            if options.verbose:
+                print("\n pyDart: %s sorted\n" % options.file)
+        else:
+            print("\n  pyDart:  ERROR!!  Can only sort on HDF5 pyDART file, exiting...\n")
+            sys.exit(1)
+            
     if options.search:   # Do a search and return the index of that search
         if options.file[-2:] == "h5":
             myDART.file(filename = options.file)
