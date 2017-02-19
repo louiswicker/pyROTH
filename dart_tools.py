@@ -224,7 +224,7 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_d
        filename = "obs_seq.out"
    else:
        dirname = os.path.dirname(filename)
-       basename = "%s_%s.out" % ("obs_seq", os.path.basename(filename))
+       basename = "%s.out" % (os.path.basename(filename))
        filename =  os.path.join(dirname, basename)
       
    if obs_error == None:
