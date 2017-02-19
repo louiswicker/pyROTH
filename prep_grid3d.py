@@ -1,3 +1,18 @@
+#!/usr/bin/env python
+#############################################################
+# grid3d: A program to process new MRMS volumes             #
+#         netCDF4 MRMS files are read in and processed to   #
+#         to DART format for assimilationp.                 #
+#                                                           #
+#       Python package requirements:                        #
+#       ----------------------------                        #
+#       Numpy                                               #
+#       Scipy                                               #
+#       matplotlib                                          #
+#############################################################
+#
+# created by Lou Wicker Feb 2017
+#
 #############################################################
 import os
 import sys
@@ -18,26 +33,24 @@ from mpl_toolkits.basemap import Basemap
 from pyart.graph import cm
 import datetime as DT
 from numpy import ma
+from dart_tools import *
 
 # missing value
 _missing = -9999.
 
-# True here uses the basemap county database to plot the county outlines.
-_plot_counties = True
-
-# Need for coordinate projection
-truelat1, truelat2 = 30.0, 60.0
-
 ##########################################################################################
 # Parameter dict for reflectivity masking
 _grid_dict = {
-              '0dbz_obtype'     : False,
-              'thin_zeros'      : 4,
+              'zero_dbz_obtype' : True,
+              'thin_zeros'      : 3,
               'halo_footprint'  : 4,
               'max_height'      : 10000.,
-              'Zero_Levels'     : [False, 5000.], 
+              'zero_levels'     : [6000.], 
               'min_dbz_analysis': 20.0,
               'min_dbz_zeros'   : 20.0,
+              'reflectivity'    : 5.0,
+              '0reflectivity'   : 5.0, 
+              'levels'          : [1,2,3,4,5,6,8,10,12,14, 16, 18]
              }
 
 #=========================================================================================
@@ -56,7 +69,7 @@ class Gridded_Field(object):
     return self.__dict__
                  
 #=========================================================================================
-# DBZ Mask
+# Get the filenames out of the directory
 
 def get_dir_files(dir, pattern, Quiet=False):
 
@@ -108,9 +121,13 @@ def dbz_masking(ref, thin_zeros=2):
      
    zero_dbz.mask[max_neighbor == True] = True
 
-   print(" Number of zeros in the field after haolo:  %d\n " % (np.sum(zero_dbz.mask==False)))
+   print(" Number of zeros in the field after halo:  %d\n " % (np.sum(zero_dbz.mask==False)))
    
-   ref.zero_dbz = zero_dbz
+# Create new object so that we can combine later
+
+   obj_zero_dbz = Gridded_Field("zero_dbz", data=zero_dbz, zg=_grid_dict['zero_levels'], radar_hgt=0.0)
+   
+   ref.zero_dbz = obj_zero_dbz
    
 # Now clip the reflectivity
 
@@ -238,12 +255,12 @@ def grid_plot(ref, sweep, fsuffix=None, shapefiles=None, interactive=True):
 
   try:
       r_mask = (ref.zero_dbz.mask == False)
-      print( "1 %d" % np.sum(r_mask) )
+      print("%d" % np.sum(r_mask) )
       bgmap.scatter(xg_2d[r_mask], yg_2d[r_mask], s=25, facecolors='none', \
                     edgecolors='k', alpha=1.0, ax=ax1) 
   except AttributeError:
       r_mask = (ref.data.data[sweep] < 1.0) & (ref.data.mask[sweep] == False)
-      print( "2 %d" % np.sum(r_mask) )
+      print("%d" % np.sum(r_mask) )
       bgmap.scatter(xg_2d[r_mask], yg_2d[r_mask], s=25, facecolors='none', \
                     edgecolors='k', alpha=1.0, ax=ax1)
   
@@ -261,46 +278,102 @@ def grid_plot(ref, sweep, fsuffix=None, shapefiles=None, interactive=True):
 # Main function defined to return correct sys.exit() calls
 
 def main(argv=None):
-    if argv is None:
-           argv = sys.argv
+   if argv is None:
+       argv = sys.argv
 #
 # Command line interface 
 #
-    parser = OptionParser()
-    parser.add_option("-d", "--dir",         dest="dir",       default=None,  type="string", help = "Directory where files are")
-    parser.add_option("-p", "--pat",         dest="pat",       default=None,  type="string", help = "Pattern grep, [*.nc, *VR.h5]")
+   parser = OptionParser()
+   parser.add_option("-d", "--dir",      dest="dir",     default=None,  type="string", help = "Directory where files are")
+   
+   parser.add_option("-g", "--grep",     dest="grep",    default="*",  type="string", help = "Pattern grep, [*.nc, *VR.h5]")
+   
+   parser.add_option("-w", "--write",    dest="write",   default=False, \
+                           help = "Boolean flag to write DART ascii file", action="store_true")
+                           
+   parser.add_option("-o", "--out",      dest="out_dir",  default="ref_files",  type="string", \
+                           help = "Directory to place output files in")
+                           
+   parser.add_option("-p", "--plot",      dest="plot",      default=-1,  type="int",      \
+                     help = "Specify a number between 0 and 20 to plot reflectivity")
+                  
+   (options, args) = parser.parse_args()
 
-    (options, args) = parser.parse_args()
-    
-    filenames = get_dir_files(options.dir, options.pat, Quiet=False)
-    
-# fix up the files
+#-------------------------------------------------------------------------------
 
-    file    = filenames[-1]
+   if options.dir == None:
+          
+      print "\n\n ***** USER MUST SPECIFY A DIRECTORY WHERE FILES ARE *****"
+      print "\n                         EXITING!\n\n"
+      parser.print_help()
+      print
+      sys.exit(1)
+      
+   if options.plot < 0:
+       plot_grid = False
+   else:
+       sweep_num = options.plot
+       plot_grid = True
+       
+#-------------------------------------------------------------------------------
 
-    f       = ncdf.Dataset(file, "r")
-    missing = f.MissingData
-    nlon    = len(f.dimensions['Lon'])
-    nlat    = len(f.dimensions['Lat'])
-    nlvl    = len(f.dimensions['Ht'])
-    ref     = ma.MaskedArray(f.variables['ReflectivityQC'][...], mask = (f.variables['ReflectivityQC'][...] < missing+1.))
-    lons    = f.variables['Lon'][...]
-    lats    = f.variables['Lat'][...]
-    msl     = f.variables['Height'][...]
-    height0 = f.Height
-    time    = DT.datetime.strptime(file[-18:-3], "%Y%m%d-%H%M%S")
+   in_filenames = get_dir_files(options.dir, options.grep, Quiet=False)
+   out_filenames = []
+   
+ # Make sure there is a directory to write files into....
+ 
+   if not os.path.exists(options.out_dir):
+       os.mkdir(options.out_dir)
 
-    f.close()
-    
-    print(lats[0],lats[-1])
-    print(lons[0],lons[-1])
-    print( time.strftime('%Y-%m-%d %H:%M:%S') )
+   print("\n prep_grid3d:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dir))
+   print("\n prep_grid3d:  First file is %s\n" % (in_filenames[0]))
+   print("\n prep_grid3d:  Last  file is %s\n" % (in_filenames[-1]))
+
+   for n, file in enumerate(in_filenames):
+   
+      print ' ================================================================================'
+
+      str_time     = "%s_%s" % (os.path.basename(file)[-18:-10], os.path.basename(file)[-9:-3])
+      prefix       = "obs_seq_RF_%s" % str_time
+      out_filename = os.path.join(options.out_dir, prefix)
+      print(" Out filename:  %s\n" % out_filename)
+   
+      f       = ncdf.Dataset(file, "r")
+      missing = f.MissingData
+      nlon    = len(f.dimensions['Lon'])
+      nlat    = len(f.dimensions['Lat'])
+      nlvl    = len(f.dimensions['Ht'])
+      ref     = ma.MaskedArray(f.variables['ReflectivityQC'][...], mask = (f.variables['ReflectivityQC'][...] < missing+1.))
+      lons    = f.variables['Lon'][...]
+      lats    = f.variables['Lat'][...]
+      msl     = f.variables['Height'][...]
+      height0 = f.Height
+      time    = DT.datetime.strptime(file[-18:-3], "%Y%m%d-%H%M%S")
+      dtime   = (time - DT.datetime(1970, 1, 1, 0, 0)).total_seconds
+
+      f.close()
+   
+      print(" Time of file:  %s\n" % time.strftime('%Y-%m-%d %H:%M:%S') )
              
-    ref_obj = Gridded_Field(file, data = ref, zg = msl, lats = lats, lons = lons, radar_hgt = height0, time = time ) 
+      ref_obj = Gridded_Field(file, data = ref, field = "REFLECTIVITY", zg = msl, \
+                                    lats = lats, lons = lons, radar_hgt = height0, time = time ) 
+#       ref_obj.data.field     = "REFLECTIVITY"
+#       ref_obj.data.zg        = msl
+#       ref_obj.data.lats      = lats
+#       ref_obj.data.lons      = lons
+#       ref_obj.data.radar_hgt = height0
+# #       ref_obj.data.time      = {'data': np.array(dtime), 'units': "seconds since January 1, 1970"}
+#       ref_obj.data.time      = time
+      
+      ref_obj = dbz_masking(ref_obj, thin_zeros=_grid_dict['thin_zeros'])
+      
+      if plot_grid:
+          grid_plot(ref_obj, sweep_num)
+    
+      if options.write == True:      
+          ret = write_DART_ascii(ref_obj, filename=out_filename, levels=_grid_dict['levels'],
+                                 obs_error=[_grid_dict['reflectivity'],_grid_dict['0reflectivity']])
 
-    dbz_masking(ref_obj, thin_zeros=_grid_dict['thin_zeros'])
-             
-    grid_plot(ref_obj, 10)
 
 #-------------------------------------------------------------------------------
 # Main program for testing...
