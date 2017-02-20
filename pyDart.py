@@ -552,23 +552,41 @@ def mergeTables(table_new, tables, addindex=True):
         print "New table:    ", table1
         
         indexrows = table1.cols.utime.create_csindex()
-#         indexrows = table1.cols.kind.create_index()
         
         group_header = h5file1.root.header
         group_header.attributes.cols.last[0]        = table1.nrows
         group_header.attributes.cols.max_num_obs[0] = table1.nrows
         group_header.attributes.cols.num_obs[0]     = table1.nrows
         
-        table_obs = h5file1.create_table(group_obs, 'observations', DART_obs, 'Observations from DART file')
-
         h5file1.close()
 
         return
 
 #===============================================================================
-def sortTable(table):
+#
+def sortTable(filename, overwrite=True):
 
-    print "sortTable called"
+    if overwrite:
+       cmd = ("cp %s %s_unsorted.h5" % (filename, filename[:-3]))
+       print("\n sortTable is running command:  %s" % cmd)
+       os.system(cmd)
+       
+    cmd = ("ptrepack -o --overwrite-nodes --keep-source-filters %s:/ sorted.h5:/" % filename)
+    print("\n sortTable is running command:  %s" % cmd)
+    os.system(cmd)
+    
+    cmd = ("ptrepack --sortby utime --overwrite-nodes --keep-source-filters %s:/obs/observations sorted.h5:/obs/observations" % \
+           filename)
+    print("\n sortTable is running command:  %s" % cmd)
+    os.system(cmd)
+    
+    if overwrite:
+         cmd = ("cp sorted.h5 %s" % filename)
+         print("\n sortTable is running command:  %s" % cmd)
+         os.system(cmd)
+                   
+    return
+
 #===============================================================================
 class pyDART():
 
@@ -692,7 +710,7 @@ class pyDART():
                 group_header = h5file_sub.create_group("/", 'header', 'Header Information for DART file')
                 table_header = h5file_sub.create_table(group_header, 'attributes', DART_header, 'Attributes of the observational file')
         
-                root   = h5file_sub.root
+                root         = h5file_sub.root
                 group_obs    = root.obs
                 group_header = root.header
         
@@ -717,10 +735,6 @@ class pyDART():
 #-------------------------------------------------------------------------------
 # A quick routine to grid pyDART data
     
-    def sortTable(self, re_index=False):
-    
-        return
-
 #-------------------------------------------------------------------------------
 # A quick routine to grid pyDART data
     
@@ -2056,7 +2070,6 @@ class pyDART():
         
         n = 0
         for row in table.itersequence(self.index):
-#         for row in table.itersorted('utime', checkCSI=True):
             n += 1
             
             fi.write(" OBS            %d\n" % n )
@@ -2468,14 +2481,13 @@ def main(argv=None):
         loc.append( "( z <= " + str(zloc[1]) + ")" )
         options.search = True
         
-    if options.search:   # Do a search and return the index of that search
+    if options.sort and not options.merge:   # Do a search and return the index of that search
         if options.file[-2:] == "h5":
-            myDART.file(filename = options.file)
-            myDART.sort()
+            sortTable(options.file)
             if options.verbose:
-                print("\n pyDart: %s sorted\n" % options.file)
+                print("\n pyDart: %s is now sorted by time\n" % options.file)
         else:
-            print("\n  pyDart:  ERROR!!  Can only sort on HDF5 pyDART file, exiting...\n")
+            print("\n  pyDart:  ERROR!!  Can only sort on HDF5 pyDART file, exiting...")
             sys.exit(1)
             
     if options.search:   # Do a search and return the index of that search
@@ -2484,66 +2496,56 @@ def main(argv=None):
             myDART.search(variable=options.variable, start = start, end = end, condition=options.condition, loc=loc)
             if options.verbose:
                 if myDART.index != None:
-                    print "\n pyDart: %d Observations found between %s and %s in file %s " % (len(myDART.index), str(start), str(end), myDART.hdf5)
+                    print("\n pyDart: %d Observations found between %s and %s in file %s " % \
+                          (len(myDART.index), str(start), str(end), myDART.hdf5))
                 else:
-                    print "\n pyDart:  No Observations found between %s and %s in file %s " % (str(start), str(end), myDART.hdf5)
+                    print("\n pyDart:  No Observations found between %s and %s in file %s " % (str(start), str(end), myDART.hdf5))
                     sys.exit(1)
         else:
-            print "\n  pyDart:  ERROR!!  Can only search on HDF5 pyDART file, exiting..."
+            print("\n  pyDart:  ERROR!!  Can only search on HDF5 pyDART file, exiting...")
             sys.exit(1)
     
     if options.list and options.variable == None:
-        print
-        if myDART.verbose:  print "\n PyDart:  Listing file contents"
+        if myDART.verbose:  print("\n PyDart:  Listing file contents")
         myDART.file(filename = options.file)
         myDART.list()
-        print
-    
     if options.list and options.variable != None:
-        print
-        if myDART.verbose:  print "\n PyDart:  Listing information requested about variable:  ", options.variable
+        if myDART.verbose:  print("\n PyDart:  Listing information requested about variable:  ", options.variable)
         myDART.file(filename = options.file)
         myDART.list(variable = options.variable, dumplength = options.dump)
-        print
     
     if options.stats:
-        print
-        if myDART.verbose:  print "\n PyDart:  Creating stats"
+        if myDART.verbose:  print("\n PyDart:  Creating stats")
         myDART.file(filename = options.file)
         myDART.stats(variable = options.variable)
-        print
 
     if options.plot:
-        print
-        if myDART.verbose:  print "\n PyDart:  plotting data"
+        if myDART.verbose: print("\n PyDart:  plotting data")
         myDART.file(filename = options.file)
         myDART.plot(variable = options.variable, convertLatLon = _convertLatLon, savefig=options.output)
-        print
 
     if options.scatter:
-      print
-      print "PyDart:  making scatterplot of data"
+      print("\n PyDart:  making scatterplot of data")
       myDART.file(filename = options.file)
       myDART.scatter(variable = options.variable, convertLatLon = _convertLatLon)
-      print
     
     if options.hdf2ascii:
 
         for file in in_filenames:
             if myDART.index != None:
-                if myDART.verbose:  print "\n PyDart:  converting HDF5 DART file:  ", file
+                if myDART.verbose:  print("\n PyDart:  converting HDF5 DART file:  %s" % file)
                 myDART.file(filename = file)
                 myDART.hdf2ascii(obs_error=options.obserror)
-                if myDART.verbose:  print "PyDart:  Completed convertion, PyDART file:  ", myDART.ascii
+                if myDART.verbose:  print("\n PyDart:  Completed convertion, PyDART file:  %s" % myDART.ascii)
             else:
-                print "\n PyDart:  No search indices supplied, so converting entire h5 file to ascii\n"
+                print("\n PyDart:  No search indices supplied, so converting entire h5 file to ascii...")
                 myDART.file(filename = file)
                 myDART.hdf2ascii(obs_error=options.obserror)
 
     if options.nc2hdf:
         myDART.file(filename = options.file)
         myDART.nc2hdf(options.nc2hdf)
-        if myDART.verbose:  print "PyDart:  Completed convertion, PyDART file:  "
+        if myDART.verbose:  print("\n PyDart:  Completed convertion, PyDART file:  %s" % options.ncdf)
 
     if options.mrms:
         if options.lat_box:  
@@ -2559,45 +2561,45 @@ def main(argv=None):
         myDART.mrms(options.mrms, filename = options.file, lat_bbox = lat_bbox, lon_bbox = lon_bbox )
         myDART.hdf2ascii()
         
-        if myDART.verbose:  print "PyDart:  Completed convertion, PyDART file:  "
+        if myDART.verbose:  print("\n PyDart:  Completed convertion, PyDART file:  %s" % options.file)
  
     if options.addindex:
         myDART.file(filename = options.file)
         myDART.indexrows
-        if myDART.verbose:  print "PyDart:  Completed convertion, PyDART file:  "
+        if myDART.verbose:  print("\n PyDart:  Completed convertion, PyDART file:  %s" % options.file)
        
     if options.merge and options.file:
         if len(in_filenames) > 2:
             mergeTables(options.file, in_filenames)
+            if options.sort:
+                sortTable(options.file)
+                if options.verbose:
+                    print("\n pyDart: %s is now sorted by time" % options.file)
         else:
-            print("\n You need to specify a directory and a grep pattern for the two files you want merged using '-d dir grep_pattern' \n")
-            print("\n You need to specify a directory and a grep pattern for the two files you want merged using '-d dir grep_pattern' \n")
-            sys.exit(0)
+            print("\n You need to specify a directory and a grep pattern for the two files you want merged using \
+                   '-d dir grep_pattern' \n")
+            print("\n You need to specify a directory and a grep pattern for the two files you want merged using \
+                  '-d dir grep_pattern' \n")
+            sys.exit(-1)
    
-    if options.DartTimes:
-        if options.verbose:
-            print
-            if myDART.verbose:  print "\n PyDart:  Dumping out getDARTtimes information"
-            print
-        myDART.file(filename = options.file)
-        myDART.getDartTimes(output_file_name = options.output)
-
     if options.correctens:
-        if options.verbose and myDART.verbose:  print "\n PyDart:  Creating correct_ensemble input file from observations\n "
+        if options.verbose and myDART.verbose:  print("\n PyDart:  Creating correct_ensemble input file from observations")
         if options.file[-2:] == "h5":
             myDART.file(filename = options.file)
             myDART.search(variable="DBZ", start = start, end = end, condition=options.condition, loc=loc)
             if options.verbose:
                 if myDART.index != None:
-                    print "\n pyDart: %d Observations found between %s and %s in file %s " % (len(myDART.index), str(start), str(end), myDART.hdf5)
+                    print("\n pyDart: %d Observations found between %s and %s in file %s " % \
+                         (len(myDART.index), str(start), str(end), myDART.hdf5))
                 else:
-                    print "\n pyDart:  No Observations found between %s and %s in file %s " % (str(start), str(end), myDART.hdf5)
-                    sys.exit(1)
+                    print("\n pyDart:  No Observations found between %s and %s in file %s " % (str(start), str(end), myDART.hdf5))
+                    sys.exit(0)
             myDART.correct_ens_output()
-            if options.verbose and myDART.verbose:  print "\n PyDart:  Created correct_ensemble input file from dbz observations \n"
+            if options.verbose and myDART.verbose:  
+                print("\n PyDart:  Created correct_ensemble input file from dbz observations \n")
         else:
-            print "\n pyDart:  ERROR!!  Can only search on HDF5 pyDART file, exiting..."
-            sys.exit(1)
+            print("\n pyDart:  ERROR!!  Can only search on HDF5 pyDART file, exiting...")
+            sys.exit(-1)
 
 #-------------------------------------------------------------------------------
 # Main program for testing...
