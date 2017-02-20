@@ -31,6 +31,7 @@ import scipy.spatial
 from optparse import OptionParser
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredText
 import netCDF4 as ncdf
+import datetime as DT
 
 import cressman
 import pyart
@@ -450,11 +451,10 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
       except AttributeError:
           print("\n write_DART_ascii:  No 0-DBZ separate type found\n")
 
-# Use the volume mean time for the time of the volume
+# Set up the time stamping for dat
       
-  dtime   = ncdf.num2date(obs.time['data'].mean(), obs.time['units'])
-  days    = ncdf.date2num(dtime, units = "days since 1601-01-01 00:00:00")
-  seconds = np.int(86400.*(days - np.floor(days)))
+  vol_time = DT.datetime.strptime(obs.time['units'], "seconds since %Y-%m-%dT%H:%M:%SZ")
+  dt_time  = vol_time - DT.datetime(1601,1,1,0,0,0)
   
 # Print the number of value gates
 
@@ -478,6 +478,12 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
           pass
       else:          
           nobs += 1
+
+# time of observations is the mean time of each sweep
+          
+          sw_time = dt_time + DT.timedelta(seconds=obs.sweep_time[k])
+          days    = sw_time.days
+          seconds = sw_time.seconds
   
           if _write_grid_indices:
               fi.write(" OBS            %d     %d     %d    %d\n" % (nobs,k,j,i) )
@@ -759,10 +765,11 @@ def grid_data(volume, field):
 
 # Create a 3D array for analysis grid, the vertical dimension is the number of tilts
 
-  new = np.ma.zeros((volume.nsweeps, grid_pts_xy, grid_pts_xy))
-  elevations = np.zeros((volume.nsweeps,))
-  zgrid = np.zeros((volume.nsweeps, grid_pts_xy, grid_pts_xy))
-  nyquist = np.zeros((volume.nsweeps,))
+  new         = np.ma.zeros((volume.nsweeps, grid_pts_xy, grid_pts_xy))
+  elevations  = np.zeros((volume.nsweeps,))
+  sweep_time  = np.zeros((volume.nsweeps,))
+  zgrid       = np.zeros((volume.nsweeps, grid_pts_xy, grid_pts_xy))
+  nyquist     = np.zeros((volume.nsweeps,))
 
   tt = timeit.clock()
   
@@ -774,6 +781,8 @@ def grid_data(volume, field):
     else:
       begin = volume.sweep_end_ray_index['data'][n-1] + 1
       end   = volume.sweep_end_ray_index['data'][n] + 1
+      
+    sweep_time[n] = volume.time['data'][begin:end].mean()
 
     yob           = volume.gate_latitude['data'][begin:end,:]
     xob           = volume.gate_longitude['data'][begin:end,:]
@@ -826,7 +835,7 @@ def grid_data(volume, field):
                        xg = xg, yg = yg, zg = zgrid,                   
                        lats = lats, lons = lons, elevations=elevations,
                        radar_lat = radar_lat, radar_lon=radar_lon, radar_hgt=volume.altitude['data'][0],
-                       time = volume.time, metadata = volume.metadata, nyquist = nyquist  ) 
+                       time = volume.time, sweep_time = sweep_time, metadata = volume.metadata, nyquist = nyquist  ) 
 
 ###########################################################################################
 #
