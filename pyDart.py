@@ -581,7 +581,7 @@ def sortTable(filename, overwrite=True):
     os.system(cmd)
     
     if overwrite:
-         cmd = ("cp sorted.h5 %s" % filename)
+         cmd = ("mv sorted.h5 %s" % filename)
          print("\n sortTable is running command:  %s" % cmd)
          os.system(cmd)
                    
