@@ -41,6 +41,9 @@ import pylab as plt
 from mpl_toolkits.basemap import Basemap
 from pyart.graph import cm
 
+# debug flag
+debug = True
+
 # missing value
 _missing = -99999.
 
@@ -56,7 +59,7 @@ truelat1, truelat2 = 30.0, 60.0
 # Parameter dict for Gridding
 _grid_dict = {
               'grid_spacing_xy' : 6000.,       # meters
-              'domain_radius_xy': 150000.,     # meters
+              'domain_radius_xy': 200000.,     # meters
               'anal_method'     : 'Cressman',    # options are Cressman, Barnes (1-pass)
               'ROI'             : 6000./0.707,   # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
               'min_count'       : 6,            # regular radar data ~3, high-res radar data ~ 10
@@ -68,14 +71,15 @@ _grid_dict = {
               'thin_zeros'      : 4,
               'halo_footprint'  : 3,
               'nthreads'        : 1,
-              'max_height'      : 8000.,
-              'MRMS_zeros'      : [False, 3000.,7000.], 
+              'max_height'      : 10000.,
+              'MRMS_zeros'      : [True, 3000.],
+              'model_grid_size' : [750000., 750000.]
              }
 
 # Dict for the standard deviation of obs_error for reflectivity or velocity (these values are squared when written to DART) 
            
 _obs_errors = {
-                'reflectivity'  : 7.5,
+                'reflectivity'  : 5.0,
                 '0reflectivity' : 5.0, 
                 'velocity'      : 3.0
               }
@@ -104,12 +108,41 @@ class Gridded_Field(object):
   def keys(self):
     return self.__dict__
 
+#=======================================================================================================================
+# Parse and run NEWS csh radar file
+
+def parse_NEWSe_radar_file(radar_file_csh, getLatLon=False, getRadarList=False):
+
+# Parse radars out of the shell script - NOTE - line that contains radar list is line=6 HARDCODED
+
+    if getRadarList:
+        fhandle    = open(radar_file_csh)
+        all_lines  = fhandle.readlines()
+        radar_list = all_lines[6].split("(")[1].split(")")[0].split()
+        fhandle.close()
+        return radar_list
+        
+    if getLatLon:
+        fhandle    = open(radar_file_csh)
+        all_lines  = fhandle.readlines()
+        clat       = float(all_lines[7].split()[2])
+        clon       = float(all_lines[8].split()[2])
+        fhandle.close()
+    
+        if debug:
+            print(" NEWSe radar file has been parsed, center lat:  %f  center lon:  %f\n" % (clat, clon))
+
+        return clat, clon
+        
+    print("\n ---->>> NEWSe radar file has been called with no actions, exiting processing!!!! \n")
+    sys.exit(-1)
+
 #=========================================================================================
 # DBZ Mask
 
 def dbz_masking(ref, thin_zeros=2):
 
-  if _grid_dict['MRMS_zeros'][0] == True:   # create a two layers of zeros based on composite ref
+  if _grid_dict['MRMS_zeros'][0] == True:   # create one layers of zeros based on composite ref
   
       print("\n Creating new 0DBZ levels for output\n")
       
@@ -681,161 +714,182 @@ def volume_prep(radar, unfold_type="phase"):
 #
 # Grid data using parameters defined above in grid_dict 
 
-def grid_data(volume, field):
+def grid_data(volume, field, LatLon=None):
+ 
+# Two ways to grid the data:  radar centered or external grid
+ 
+   if LatLon == None:   # the grid is centered on the radar
+   
+       grid_spacing_xy = _grid_dict['grid_spacing_xy']
+       domain_length   = _grid_dict['domain_radius_xy']
+       grid_pts_xy     = 1 + 2*np.int(domain_length/grid_spacing_xy)
+       nx, ny          = (grid_pts_xy, grid_pts_xy)
+       radar_lat       = volume.latitude['data'][0]
+       radar_lon       = volume.longitude['data'][0]
+       xg              = -domain_length + grid_spacing_xy * np.arange(grid_pts_xy)
+       yg              = -domain_length + grid_spacing_xy * np.arange(grid_pts_xy)
+       
+       map = Proj(proj='lcc', ellps='WGS84', datum='WGS84', lat_1=truelat1, lat_2=truelat2, lat_0=radar_lat, lon_0=radar_lon)
+       xoffset, yoffset = map(radar_lon, radar_lat) 
+       lons, lats = map(xg, yg, inverse=True)
+      
+   else:  # grid grid based on model grid center LatLon
+   
+       grid_spacing_xy = _grid_dict['grid_spacing_xy']
+       nx              = 1 + np.int(_grid_dict['model_grid_size'][0] / grid_spacing_xy)
+       ny              = 1 + np.int(_grid_dict['model_grid_size'][1] / grid_spacing_xy)
+       grid_pts_xy     = max(nx, ny)
+       xg              = -0.5*_grid_dict['model_grid_size'][0] + grid_spacing_xy * np.arange(nx)
+       yg              = -0.5*_grid_dict['model_grid_size'][1] + grid_spacing_xy * np.arange(ny)
+       radar_lat       = volume.latitude['data'][0]
+       radar_lon       = volume.longitude['data'][0]
+       
+       map = Proj(proj='lcc', ellps='WGS84', datum='WGS84', lat_1=truelat1, lat_2=truelat2, lat_0=LatLon[0], lon_0=LatLon[1])
+        
+       xoffset, yoffset = map(radar_lon, radar_lat)
+       lons, lats = map(xg, yg, inverse=True)
+
+   if _grid_dict['anal_method'] == 'Cressman':
+      anal_method = 1
+   else:
+      anal_method = 2
+
+   roi        = _grid_dict['ROI']
+   nthreads   = _grid_dict['nthreads']
+   min_count  = _grid_dict['min_count']
+   min_weight = _grid_dict['min_weight']
+   min_range  = _grid_dict['min_range']
+
+########################################################################
   
-  grid_spacing_xy = _grid_dict['grid_spacing_xy']
-  domain_length   = _grid_dict['domain_radius_xy']
-  grid_pts_xy     = 1 + 2*np.int(domain_length/grid_spacing_xy)
-  roi             = _grid_dict['ROI']
-  nthreads        = _grid_dict['nthreads']
-  radar_lat       = volume.latitude['data'][0]
-  radar_lon       = volume.longitude['data'][0]
+   print '\n Gridding radar data with following parameters'
+   print ' ---------------------------------------------\n'
+   print ' Method of Analysis:      {}'.format(_grid_dict['anal_method'])
+   print ' Horizontal grid spacing: {} km'.format(grid_spacing_xy/1000.)
+   print ' Grid points in x,y:      {},{}'.format(int(nx),int(ny))
+   print ' Weighting function:      {}'.format(_grid_dict['anal_method'])
+   print ' Radius of Influence:     {} km'.format(_grid_dict['ROI']/1000.)
+   print ' Minimum gates:           {}'.format(min_count)
+   print ' Minimum weight:          {}'.format(min_weight)
+   print ' Minimum range:           {} km'.format(min_range/1000.)
+   print ' Map projection:          {}'.format(_grid_dict['projection'])
+   print ' Xoffset:                 {} km'.format(np.round(xoffset/1000.))
+   print ' Yoffset:                 {} km'.format(np.round(yoffset/1000.))
+   print ' Field to be gridded:     {}\n'.format(field) 
+   print ' Min / Max X grid loc:    {} <-> {} km\n'.format(0.001*xg[0], 0.001*xg[-1])
+   print ' Min / Max Y grid loc:    {} <-> {} km\n'.format(0.001*yg[0], 0.001*yg[-1])
+   print ' Min / Max Longitude:     {} <-> {} deg\n'.format(lons[0], lons[-1])
+   print ' Min / Max Latitude:      {} <-> {} deg\n'.format(lats[0], lats[-1])
+   print ' ---------------------------------------------\n' 
 
-  if _grid_dict['anal_method'] == 'Cressman':
-     anal_method = 1
-  else:
-     anal_method = 2
-
-  min_count  = _grid_dict['min_count']
-  min_weight = _grid_dict['min_weight']
-  min_range  = _grid_dict['min_range']
-
-# Set up coordinates for the plots
-
-
-  xg = -domain_length + grid_spacing_xy * np.arange(grid_pts_xy)
-  yg = -domain_length + grid_spacing_xy * np.arange(grid_pts_xy)
-  
-  map = Proj(proj='lcc', ellps='WGS84', datum='WGS84', lat_1=truelat1, lat_2=truelat2, lat_0=radar_lat, lon_0=radar_lon) 
-  lons, lats = map(xg, yg, inverse=True)
-  
-  print '\n Gridding radar data with following parameters'
-  print ' ---------------------------------------------\n'
-  print ' Method of Analysis:      {}'.format(_grid_dict['anal_method'])
-  print ' Horizontal grid spacing: {} m'.format(grid_spacing_xy)
-  print ' Grid points in x,y:      {},{}'.format(int(grid_pts_xy),int(grid_pts_xy))
-  print ' Weighting function:      {}'.format(_grid_dict['anal_method'])
-  print ' Radius of Influence:     {} km'.format(_grid_dict['ROI']/1000.)
-  print ' Minimum gates:           {}'.format(min_count)
-  print ' Minimum weight:          {}'.format(min_weight)
-  print ' Minimum range:           {}'.format(min_range)
-  print ' Map projection:          {}'.format(_grid_dict['projection'])
-  print ' Field to be gridded:     {}\n'.format(field) 
-  print ' Min / Max X grid loc:    {} <-> {} km\n'.format(0.001*xg[0], 0.001*xg[-1])
-  print ' Min / Max Y grid loc:    {} <-> {} km\n'.format(0.001*yg[0], 0.001*yg[-1])
-  print ' Min / Max Longitude:     {} <-> {} deg\n'.format(lons[0], lons[-1])
-  print ' Min / Max Latitude:      {} <-> {} deg\n'.format(lats[0], lats[-1])
-  print ' ---------------------------------------------\n' 
-
-  
 ########################################################################
 #
 # Local weight function for pyresample
 
-  def wf(z_in):
+   def wf(z_in):
     
-      if _grid_dict['anal_method'] == 'Cressman':
-          w    = np.zeros((z_in.shape), dtype=np.float64)
-          ww   = (roi**2 - z_in**2) / (roi**2 + z_in**2)
-          mask = (np.abs(z_in) <  roi)
-          w[mask] = ww[mask] 
-          return w
+       if _grid_dict['anal_method'] == 'Cressman':
+           w    = np.zeros((z_in.shape), dtype=np.float64)
+           ww   = (roi**2 - z_in**2) / (roi**2 + z_in**2)
+           mask = (np.abs(z_in) <  roi)
+           w[mask] = ww[mask] 
+           return w
           
-      elif _grid_dict['anal_method'] == 'test':
-          return np.ones((z_in.shape), dtype=np.float64)
+       elif _grid_dict['anal_method'] == 'test':
+           return np.ones((z_in.shape), dtype=np.float64)
           
-      elif _grid_dict['anal_method'] == 'Barnes':
+       elif _grid_dict['anal_method'] == 'Barnes':
 
-          return np.exp(-(z_in/roi)**2)
+           return np.exp(-(z_in/roi)**2)
           
-      else:  # Gasparoi and Cohen...
+       else:  # Gasparoi and Cohen...
 
-          gc = np.zeros((z_in.shape), dtype=np.float64)
-          z = abs(z_in)
-          r = z / roi
-          z1 = (((( r/12.  -0.5 )*r  +0.625 )*r +5./3. )*r  -5. )*r + 4. - 2./(3.*r)
-          z2 = ( ( ( -0.25*r +0.5 )*r +0.625 )*r  -5./3. )*r**2 + 1.
-          m1 = np.logical_and(z >= roi, z < 2*roi)
-          m2 = (z <  roi)
-          gc[m1] = z1[m1]
-          gc[m2] = z2[m2]      
-          return gc
+           gc = np.zeros((z_in.shape), dtype=np.float64)
+           z = abs(z_in)
+           r = z / roi
+           z1 = (((( r/12.  -0.5 )*r  +0.625 )*r +5./3. )*r  -5. )*r + 4. - 2./(3.*r)
+           z2 = ( ( ( -0.25*r +0.5 )*r +0.625 )*r  -5./3. )*r**2 + 1.
+           m1 = np.logical_and(z >= roi, z < 2*roi)
+           m2 = (z <  roi)
+           gc[m1] = z1[m1]
+           gc[m2] = z2[m2]      
+           return gc
 
 ########################################################################
 
 # Create a 3D array for analysis grid, the vertical dimension is the number of tilts
 
-  new         = np.ma.zeros((volume.nsweeps, grid_pts_xy, grid_pts_xy))
-  elevations  = np.zeros((volume.nsweeps,))
-  sweep_time  = np.zeros((volume.nsweeps,))
-  zgrid       = np.zeros((volume.nsweeps, grid_pts_xy, grid_pts_xy))
-  nyquist     = np.zeros((volume.nsweeps,))
+   new         = np.ma.zeros((volume.nsweeps, ny, nx))
+   elevations  = np.zeros((volume.nsweeps,))
+   sweep_time  = np.zeros((volume.nsweeps,))
+   zgrid       = np.zeros((volume.nsweeps, ny, nx))
+   nyquist     = np.zeros((volume.nsweeps,))
 
-  tt = timeit.clock()
+   tt = timeit.clock()
   
-  for n, sweep_data in enumerate(volume.iter_field(field)):
-    print n
-    if n == 0:
-      begin = 0
-      end   = volume.sweep_end_ray_index['data'][n] + 1
-    else:
-      begin = volume.sweep_end_ray_index['data'][n-1] + 1
-      end   = volume.sweep_end_ray_index['data'][n] + 1
+   for n, sweep_data in enumerate(volume.iter_field(field)):
+       if n > 2:  break
+       if n == 0:
+           begin = 0
+           end   = volume.sweep_end_ray_index['data'][n] + 1
+       else:
+           begin = volume.sweep_end_ray_index['data'][n-1] + 1
+           end   = volume.sweep_end_ray_index['data'][n] + 1
       
-    sweep_time[n] = volume.time['data'][begin:end].mean()
+       sweep_time[n] = volume.time['data'][begin:end].mean()
 
-    yob           = volume.gate_latitude['data'][begin:end,:]
-    xob           = volume.gate_longitude['data'][begin:end,:]
-    zob           = volume.gate_z['data'][begin:end,:]
-    elevations[n] = volume.elevation['data'][begin:end].mean()
-    nyquist[n]    = volume.get_nyquist_vel(n)
+       yob           = volume.gate_latitude['data'][begin:end,:]
+       xob           = volume.gate_longitude['data'][begin:end,:]
+       zob           = volume.gate_z['data'][begin:end,:]
+       elevations[n] = volume.elevation['data'][begin:end].mean()
+       nyquist[n]    = volume.get_nyquist_vel(n)
     
-    x, y, z = volume.get_gate_x_y_z(n)
-          
-    omask = (sweep_data.mask == False)
+       x, y, z = volume.get_gate_x_y_z(n)
+       omask = (sweep_data.mask == False)
     
-    obs = sweep_data[omask].ravel()
-    xob = x[omask].ravel()
-    yob = y[omask].ravel()
-
-    ix = np.searchsorted(xg, xob)
-    iy = np.searchsorted(yg, yob)
+       obs = sweep_data[omask].ravel()
+       xob = x[omask].ravel() + xoffset
+       yob = y[omask].ravel() + yoffset
+       
+       ix = np.searchsorted(xg, xob)
+       iy = np.searchsorted(yg, yob)
     
-    if obs.size > 0:
-        tmp = cressman.obs_2_grid2d(obs, xob, yob, xg, yg, ix, iy, anal_method, min_count, min_weight, min_range, roi, _missing)
-        new_mask = (tmp <= _missing)
-        new[n] = np.ma.array(tmp, mask=new_mask)
-    else:
-        new[n] = np.ma.masked_all((grid_pts_xy, grid_pts_xy))
+       if obs.size > 0:
+           tmp = cressman.obs_2_grid2d(obs, xob, yob, xg, yg, ix, iy, anal_method, min_count, min_weight, min_range, \
+                                       2.0*grid_spacing_xy, _missing)
+           new_mask = (tmp <= _missing)
+           new[n] = np.ma.array(tmp, mask=new_mask)
+       else:
+           new[n] = np.ma.masked_all((grid_pts_xy, grid_pts_xy))
         
-    print("Elevation: %4.2f  Number of valid grid points:  %d" % (elevations[n],np.sum(new[n].mask==False)))
+       print("Elevation: %4.2f  Number of valid grid points:  %d" % (elevations[n],np.sum(new[n].mask==False)))
 
-    if field == "reflectivity":
-      new[n].mask = np.logical_or(new[n].mask, new[n] < _radar_parameters['min_dbz_analysis'])
-      print("Elevation: %4.2f  Number of valid reflectivity points:  %d" % (elevations[n],np.sum(new[n].mask==False)))
+       if field == "reflectivity":
+           new[n].mask = np.logical_or(new[n].mask, new[n] < _radar_parameters['min_dbz_analysis'])
+           print("Elevation: %4.2f  Number of valid reflectivity points:  %d" % (elevations[n],np.sum(new[n].mask==False)))
 
-# Create z-field
+   # Create z-field
 
-    zobs= z.ravel()
-    xob = x.ravel()
-    yob = y.ravel()
+       zobs= z.ravel()
+       xob = x.ravel()
+       yob = y.ravel()
 
-    zobs = np.where( zobs < 0.0, 0.0, zobs)
+       zobs = np.where( zobs < 0.0, 0.0, zobs)
     
-    ix = np.searchsorted(xg, xob)
-    iy = np.searchsorted(yg, yob)
+       ix = np.searchsorted(xg, xob)
+       iy = np.searchsorted(yg, yob)
 
-    tmp = cressman.obs_2_grid2d(zobs, xob, yob, xg, yg, ix, iy, 1, 1, 0.1, min_range, 2.0*grid_spacing_xy, -99999.)
-    new_mask = (tmp == -99999.)
-    zgrid[n] = np.ma.array(tmp, mask=new_mask)
+       tmp = cressman.obs_2_grid2d(zobs, xob, yob, xg, yg, ix, iy, 1, 1, 0.1, min_range, 2.0*grid_spacing_xy, -99999.)
+       new_mask = (tmp == -99999.)
+       zgrid[n] = np.ma.array(tmp, mask=new_mask)
     
-  print("\n %f secs to run superob analysis for all levels \n" % (timeit.clock()-tt))
+   print("\n %f secs to run superob analysis for all levels \n" % (timeit.clock()-tt))
 
-  return Gridded_Field("data_grid", field = field, data = new, basemap = map, 
-                       xg = xg, yg = yg, zg = zgrid,                   
-                       lats = lats, lons = lons, elevations=elevations,
-                       radar_lat = radar_lat, radar_lon=radar_lon, radar_hgt=volume.altitude['data'][0],
-                       time = volume.time, sweep_time = sweep_time, metadata = volume.metadata, nyquist = nyquist  ) 
+   return Gridded_Field("data_grid", field = field, data = new, basemap = map, 
+                        xg = xg, yg = yg, zg = zgrid,                   
+                        lats = lats, lons = lons, elevations=elevations,
+                        radar_lat = radar_lat, radar_lon = radar_lon, radar_hgt=volume.altitude['data'][0],
+                        time = volume.time, sweep_time = sweep_time, metadata = volume.metadata, nyquist = nyquist  ) 
 
 ###########################################################################################
 #
@@ -871,7 +925,7 @@ def plot_shapefiles(map, shapefiles=None, color='k', linewidth=0.5, counties=Fal
 #
 # Create two panel plot of processed, gridded velocity and reflectivity data  
 
-def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
+def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True, LatLon=None):
   
 # Set up colormaps 
 
@@ -897,25 +951,33 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
 
   if fsuffix == None:
       print("\n pyROTH.grid_plot:  No output file name is given, writing to %s" % "VR_RF_...png")
-      filename = "VR_RF_%2.2d_plot.png" % (sweep)
+      filename = "VR_RF_%2.2d_plot.pdf" % (sweep)
   else:
-       filename = "VR_RF_%2.2d_%s.png" % (sweep, fsuffix.split("/")[1])
+       filename = "VR_RF_%2.2d_%s.pdf" % (sweep, fsuffix.split("/")[1])
 
-  fig, (ax1, ax2) = plt.subplots(1, 2, sharey=True, figsize=(15,8))
+  fig, (ax1, ax2) = plt.subplots(1, 2, sharey=True, figsize=(25,14))
   
 # Set up coordinates for the plots
-  bgmap = Basemap(projection=_grid_dict['projection'], width=xwidth, \
-                  height=ywidth, resolution='c', lat_0=ref.radar_lat,lon_0=ref.radar_lon, ax=ax1)
-                  
-  xoffset,yoffset = bgmap(ref.radar_lon,ref.radar_lat)
-  xg = xoffset + ref.xg
-  yg = yoffset + ref.yg
+
+  if LatLon == None:
+      bgmap = Basemap(projection=_grid_dict['projection'], width=xwidth, \
+                  height=ywidth, resolution='c', lat_0=ref.radar_lat, lon_0=ref.radar_lon, ax=ax1)
+      xoffset, yoffset = bgmap(ref.radar_lon, ref.radar_lat)
+      xg, yg = bgmap(ref.lons, ref.lats)
+  else:
+      bgmap = Basemap(projection=_grid_dict['projection'], width=xwidth, \
+                  height=ywidth, resolution='c', lat_0=LatLon[0], lon_0=LatLon[1], ax=ax1)
+      xoffset, yoffset = bgmap(ref.radar_lon, ref.radar_lat)    
+      xg, yg = bgmap(ref.lons, ref.lats)
+      
+  print xg.min(), xg.max(), xg.shape
+  print yg.min(), yg.max(), yg.shape
   
-  yg_2d, xg_2d = np.meshgrid(ref.yg, ref.xg)
-  
-  yg_2d = yg_2d.transpose() + yoffset
-  xg_2d = xg_2d.transpose() + xoffset
-  
+  xg_2d, yg_2d = np.meshgrid(xg, yg)
+ 
+  print xg.min(), xg_2d[0,0], xg_2d[-1,-1], xg.max(), xg.shape
+  print yg.min(), yg.max(), yg.shape
+ 
 # fix xg, yg coordinates so that pcolormesh plots them in the center.
 
   dx2 = 0.5*(ref.xg[1] - ref.xg[0])
@@ -935,7 +997,7 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
   bgmap.drawmeridians(range(-170,-10,1), labels=[0,0,0,1], linewidth=0.5, ax=ax1)
 
   im1 = bgmap.pcolormesh(xe, ye, ref.data[sweep], cmap=cmapr, norm=normr, ax=ax1)
-  cbar = bgmap.colorbar(im1,location='right')
+  cbar = bgmap.colorbar(im1, location='right')
   cbar.set_label('Reflectivity (dBZ)')
   ax1.set_title('Thresholded Reflectivity (Gridded)')
   bgmap.scatter(xoffset,yoffset, c='k', s=50., alpha=0.8, ax=ax1)
@@ -944,25 +1006,31 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True):
   at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
   ax1.add_artist(at)
 
-# Plot missing values as points.
-#   r_mask = (ref.data.mask[sweep] == True)
-#   bgmap.scatter(xg_2d[r_mask].transpose(), yg_2d[r_mask].transpose(), c='k', s = 1., alpha=0.5, ax=ax1)
-
 # Plot zeros as "o"
 
   try:
       r_mask = (ref.zero_dbz.mask == False)
-      bgmap.scatter(xg_2d[r_mask].transpose(), yg_2d[r_mask].transpose(), s=25, facecolors='none', \
+       print("\n Plotting zeros from MRMS level)\n")
+      bgmap.scatter(xg_2d[r_mask], yg_2d[r_mask], s=25, facecolors='none', \
                     edgecolors='k', alpha=1.0, ax=ax1) 
+                    
   except AttributeError:
+      print("\n Plotting zeros from full 3D grid level (non-MRMS form)\n")
       r_mask = np.logical_and(ref.data[sweep] < 1.0, (ref.data.mask[sweep] == False))
-      bgmap.scatter(xg_2d[r_mask].transpose(), yg_2d[r_mask].transpose(), s=25, facecolors='none', \
+      bgmap.scatter(xg_2d[r_mask], yg_2d[r_mask], s=25, facecolors='none', \
                     edgecolors='k', alpha=1.0, ax=ax1)
   
 # RADIAL VELOCITY PLOT
 
-  bgmap = Basemap(projection=_grid_dict['projection'], width=xwidth, \
+  if LatLon == None:
+      bgmap = Basemap(projection=_grid_dict['projection'], width=xwidth, \
                   height=ywidth, resolution='c', lat_0=ref.radar_lat,lon_0=ref.radar_lon, ax=ax2)
+      xoffset, yoffset = bgmap(ref.radar_lon, ref.radar_lat)
+  else:
+      bgmap = Basemap(projection=_grid_dict['projection'], width=xwidth, \
+                  height=ywidth, resolution='c', lat_0=LatLon[0], lon_0=LatLon[1], ax=ax2)
+      xoffset, yoffset = bgmap(ref.radar_lon, ref.radar_lat)            
+  
                   
   if shapefiles:
       plot_shapefiles(bgmap, shapefiles=shapefiles, counties=_plot_counties, ax=ax2)
@@ -1132,216 +1200,225 @@ def write_radar_file(ref, vel, filename=None):
 
 if __name__ == "__main__":
 
-  print ' ================================================================================'
-  print ''
-  print '                   BEGIN PROGRAM pyROTH                     '
-  print ''
+   print ' ================================================================================'
+   print ''
+   print '                   BEGIN PROGRAM pyROTH                     '
+   print ''
 
-  parser = OptionParser()
-  parser.add_option("-d", "--dir",       dest="dname",     default=None,  type="string", \
-                     help = "Directory of files to process")
+   parser = OptionParser()
+   parser.add_option("-d", "--dir",       dest="dname",     default=None,  type="string", \
+                      help = "Directory of files to process")
                      
-  parser.add_option("-o", "--out",       dest="out_dir",     default="roth_files",  type="string", \
-                     help = "Directory to place output files in")
+   parser.add_option("-o", "--out",       dest="out_dir",     default="roth_files",  type="string", \
+                      help = "Directory to place output files in")
                      
-  parser.add_option("-f", "--file",      dest="fname",     default=None,  type="string", \
-                     help = "filename of NEXRAD level II volume to process")
+   parser.add_option("-f", "--file",      dest="fname",     default=None,  type="string", \
+                      help = "filename of NEXRAD level II volume to process")
                      
-  parser.add_option("-u", "--unfold",    dest="unfold",    default="phase",  type="string", \
-                     help = "dealiasing method to use (phase or region, default = phase)")
+   parser.add_option("-u", "--unfold",    dest="unfold",    default="phase",  type="string", \
+                      help = "dealiasing method to use (phase or region, default = phase)")
                      
-  parser.add_option("-w", "--write",     dest="write",   default=False, \
-                     help = "Boolean flag to write DART ascii file", action="store_true")
+   parser.add_option("-w", "--write",     dest="write",   default=False, \
+                      help = "Boolean flag to write DART ascii file", action="store_true")
                      
-  parser.add_option(     "--method",     dest="method",   default=None, type="string", \
-          help = "Function to use for the weight process, valid strings are:  Cressman or Barnes")
+   parser.add_option(     "--method",     dest="method",   default=None, type="string", \
+           help = "Function to use for the weight process, valid strings are:  Cressman or Barnes")
           
-  parser.add_option(     "--dx",     dest="dx",   default=None, type="float", \
-          help = "Analysis grid spacing in meters for superob resolution")
+   parser.add_option(     "--dx",     dest="dx",   default=None, type="float", \
+           help = "Analysis grid spacing in meters for superob resolution")
           
-  parser.add_option(     "--roi",     dest="roi",   default=None, type="float", \
-          help = "Radius of influence in meters for superob regrid")
+   parser.add_option(     "--roi",     dest="roi",   default=None, type="float", \
+           help = "Radius of influence in meters for superob regrid")
 
-  parser.add_option("-p", "--plot",      dest="plot",      default=-1,  type="int",      \
-                     help = "Specify a number between 0 and # elevations to plot ref and vr in that co-plane")
+   parser.add_option("-p", "--plot",      dest="plot",      default=-1,  type="int",      \
+                      help = "Specify a number between 0 and # elevations to plot ref and vr in that co-plane")
                      
-  parser.add_option("-i", "--interactive", dest="interactive", default=False,  action="store_true",     \
-                     help = "Boolean flag to specify to plot image to screen (when plot > -1).")  
+   parser.add_option("-i", "--interactive", dest="interactive", default=False,  action="store_true",     \
+                      help = "Boolean flag to specify to plot image to screen (when plot > -1).")  
                      
-  parser.add_option("-s", "--shapefiles", dest="shapefiles", default=None, type="string",    \
-                     help = "Name of system env shapefile you want to add to the plots.")
+   parser.add_option("-s", "--shapefiles", dest="shapefiles", default=None, type="string",    \
+                      help = "Name of system env shapefile you want to add to the plots.")
+                     
+   parser.add_option(      "--newse",    dest="newse",    type="string", default=None, \
+                       help = "NEWSe radars description file to parse for model grid lat and lon" )
 
-  (options, args) = parser.parse_args()
+   (options, args) = parser.parse_args()
   
-  parser.print_help()
+   parser.print_help()
 
-  print ''
-  print ' ================================================================================'
+   print ''
+   print ' ================================================================================'
   
-  if not os.path.exists(options.out_dir):
-    os.mkdir(options.out_dir)
+   if not os.path.exists(options.out_dir):
+       os.mkdir(options.out_dir)
 
-  out_filenames = []
-  in_filenames  = []
+   out_filenames = []
+   in_filenames  = []
 
-  if options.dname == None:
+   if options.dname == None:
           
-    if options.fname == None:
-      print "\n\n ***** USER MUST SPECIFY NEXRAD LEVEL II (MESSAGE 31) FILE! *****"
-      print "\n                         EXITING!\n\n"
-      parser.print_help()
-      print
-      sys.exit(1)
+       if options.fname == None:
+           print "\n\n ***** USER MUST SPECIFY NEXRAD LEVEL II (MESSAGE 31) FILE! *****"
+           print "\n                         EXITING!\n\n"
+           parser.print_help()
+           print
+           sys.exit(1)
       
-    else:
-      in_filenames.append(os.path.abspath(options.fname))
-      strng = os.path.basename(in_filenames[0])[0:-3]
-      strng = strng[0:5] + "_" + strng[5:]
-      strng = os.path.join(options.out_dir, strng)
-      out_filenames.append(strng) 
+       else:
+           in_filenames.append(os.path.abspath(options.fname))
+           strng = os.path.basename(in_filenames[0])[0:-3]
+           strng = strng[0:5] + "_" + strng[5:]
+           strng = os.path.join(options.out_dir, strng)
+           out_filenames.append(strng) 
 
-  else:
-    in_filenames = glob.glob("%s/*" % os.path.abspath(options.dname))
-    print("\n pyROTH:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dname))
-    print("\n pyROTH:  First file is %s\n" % (in_filenames[0]))
-    print("\n pyROTH:  Last  file is %s\n" % (in_filenames[-1]))
-    print("\n pyROTH:  Last  file is %s\n" % (in_filenames[0][-3:]))
+   else:
+       in_filenames = glob.glob("%s/*" % os.path.abspath(options.dname))
+       print("\n pyROTH:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dname))
+       print("\n pyROTH:  First file is %s\n" % (in_filenames[0]))
+       print("\n pyROTH:  Last  file is %s\n" % (in_filenames[-1]))
+       print("\n pyROTH:  Last  file is %s\n" % (in_filenames[0][-3:]))
  
-    if in_filenames[0][-3:] == "V06" or in_filenames[0][-6:] == "V06.gz":
-      for item in in_filenames:
-        strng = os.path.basename(item)[0:17]
-        strng = strng[0:4] + "_" + strng[4:]
-        strng = os.path.join(options.out_dir, strng)
-        out_filenames.append(strng) 
-        print(strng)
+       if in_filenames[0][-3:] == "V06" or in_filenames[0][-6:] == "V06.gz":
+           for item in in_filenames:
+               strng = os.path.basename(item)[0:17]
+               strng = strng[0:4] + "_" + strng[4:]
+               strng = os.path.join(options.out_dir, strng)
+               out_filenames.append(strng) 
+               print(strng)
         
-    if in_filenames[0][-3:] == ".nc":
-      for item in in_filenames:
-        strng = os.path.basename(item).split(".")[0:2]
-        print strng
-        strng = strng[0] + "_" + strng[1]
-        strng = os.path.join(options.out_dir, strng)
-        out_filenames.append(strng) 
-        print strng
+       if in_filenames[0][-3:] == ".nc":
+           for item in in_filenames:
+               strng = os.path.basename(item).split(".")[0:2]
+               print strng
+               strng = strng[0] + "_" + strng[1]
+               strng = os.path.join(options.out_dir, strng)
+               out_filenames.append(strng) 
+               print strng
 
-  if options.unfold == "phase":
-      print "\n pyROTH dealias_unwrap_phase unfolding will be used\n"
-      unfold_type = "phase"
-  elif options.unfold == "region":
-      print "\n pyROTH dealias_region_based unfolding will be used\n"
-      unfold_type = "region"
-  else:
-      print "\n ***** INVALID OR NO VELOCITY DEALIASING METHOD SPECIFIED *****"
-      print "\n          NO VELOCITY UNFOLDING DONE...\n\n"
-      unfold_type = None
+   if options.unfold == "phase":
+       print "\n pyROTH dealias_unwrap_phase unfolding will be used\n"
+       unfold_type = "phase"
+   elif options.unfold == "region":
+       print "\n pyROTH dealias_region_based unfolding will be used\n"
+       unfold_type = "region"
+   else:
+       print "\n ***** INVALID OR NO VELOCITY DEALIASING METHOD SPECIFIED *****"
+       print "\n          NO VELOCITY UNFOLDING DONE...\n\n"
+       unfold_type = None
+
+   if options.newse:
+       print(" \n now processing NEWSe radar file....\n ")
+       cLatLon = parse_NEWSe_radar_file(options.newse, getLatLon=True)
+   else:
+       cLatLon = None
     
-  if options.method:
-       _grid_dict['anal_method'] = options.method
+   if options.method:
+        _grid_dict['anal_method'] = options.method
 
-  if options.dx:
-       _grid_dict['grid_spacing_xy'] = options.dx
-       _grid_dict['ROI'] = options.dx / 0.707
+   if options.dx:
+        _grid_dict['grid_spacing_xy'] = options.dx
+        _grid_dict['ROI'] = options.dx / 0.707
        
-  if options.roi:
-     _grid_dict['ROI'] = options.roi
+   if options.roi:
+      _grid_dict['ROI'] = options.roi
 
-  if options.plot < 0:
-      plot_grid = False
-  else:
-      sweep_num = options.plot
-      plot_grid = True
+   if options.plot < 0:
+       plot_grid = False
+   else:
+       sweep_num = options.plot
+       plot_grid = True
   
 # Read input file and create radar object
 
-  t0 = timeit.time()
+   t0 = timeit.time()
 
-  for n, fname in enumerate(in_filenames):
+   for n, fname in enumerate(in_filenames):
 
-      print '\n Reading: {}\n'.format(fname)
-      print '\n Writing: {}\n'.format(out_filenames[n])
+       print '\n Reading: {}\n'.format(fname)
+       print '\n Writing: {}\n'.format(out_filenames[n])
    
-      tim0 = timeit.time()
+       tim0 = timeit.time()
 
-# the check for file size is to make sure there is data in the LVL2 file
-      try:
-          if os.path.getsize(fname) < 2048000:
-              print '\n File {} is less than 2 mb, skipping...\n'.format(fname)
-              continue
-      except:
-          continue
+ # the check for file size is to make sure there is data in the LVL2 file
+       try:
+           if os.path.getsize(fname) < 2048000:
+               print '\n File {} is less than 2 mb, skipping...\n'.format(fname)
+               continue
+       except:
+           continue
       
-      if fname[-3:] == ".nc":
-        if _radar_parameters['field_label_trans'][0] == True:
-            REF_LABEL = _radar_parameters['field_label_trans'][1]
-            VEL_LABEL = _radar_parameters['field_label_trans'][2]
-            volume = pyart.io.read_cfradial(fname, field_names={REF_LABEL:"reflectivity", VEL_LABEL:"velocity"})
-        else:
-            volume = pyart.io.read_cfradial(fname)
-      else:
-        try:
-          volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
-                                                additional_metadata=None, file_field_names=False, 
-                                                delay_field_loading=False, 
-                                                station=None, scans=None, linear_interp=True)
-        except:
-          print '\n File {} cannot be read, skipping...\n'.format(fname)
-          continue
+       if fname[-3:] == ".nc":
+         if _radar_parameters['field_label_trans'][0] == True:
+             REF_LABEL = _radar_parameters['field_label_trans'][1]
+             VEL_LABEL = _radar_parameters['field_label_trans'][2]
+             volume = pyart.io.read_cfradial(fname, field_names={REF_LABEL:"reflectivity", VEL_LABEL:"velocity"})
+         else:
+             volume = pyart.io.read_cfradial(fname)
+       else:
+         try:
+           volume = pyart.io.read_nexrad_archive(fname, field_names=None, 
+                                                 additional_metadata=None, file_field_names=False, 
+                                                 delay_field_loading=False, 
+                                                 station=None, scans=None, linear_interp=True)
+         except:
+           print '\n File {} cannot be read, skipping...\n'.format(fname)
+           continue
 
-      pyROTH_io_cpu = timeit.time() - tim0
+       pyROTH_io_cpu = timeit.time() - tim0
   
-      print "\n Time for reading in LVL2: {} seconds".format(pyROTH_io_cpu)
+       print "\n Time for reading in LVL2: {} seconds".format(pyROTH_io_cpu)
   
-      tim0 = timeit.time()
+       tim0 = timeit.time()
       
 # unfolding can fail if the data are not written quite write - instead of quiting, try to unfold with region method
-      try:
-          gatefilter = volume_prep(volume, unfold_type=unfold_type) 
-      except:
-          try:
-              print("\n ----> Phase unfolding method has failed!! Trying region unfolding method\n")
-              gatefilter = volume_prep(volume, unfold_type="region")
-          except:
-              print("\n ----> Both unfolding methods have failed!! Turning off unfolding\n\n")
-              unfold_type = None 
+       try:
+           gatefilter = volume_prep(volume, unfold_type=unfold_type) 
+       except:
+           try:
+               print("\n ----> Phase unfolding method has failed!! Trying region unfolding method\n")
+               gatefilter = volume_prep(volume, unfold_type="region")
+           except:
+               print("\n ----> Both unfolding methods have failed!! Turning off unfolding\n\n")
+               unfold_type = None 
           
-      pyROTH_unfold_cpu = timeit.time() - tim0
+       pyROTH_unfold_cpu = timeit.time() - tim0
 
-      print "\n Time for unfolding velocity: {} seconds".format(pyROTH_unfold_cpu)
+       print "\n Time for unfolding velocity: {} seconds".format(pyROTH_unfold_cpu)
   
-      tim0 = timeit.time()
+       tim0 = timeit.time()
 
 # grid the reflectivity and then mask it off based on parameters set at top
 
-      ref = dbz_masking(grid_data(volume, "reflectivity"), thin_zeros=_grid_dict['thin_zeros'])
+       ref = dbz_masking(grid_data(volume, "reflectivity", LatLon=cLatLon), thin_zeros=_grid_dict['thin_zeros'])
 
 # grid the radial velocity
  
-      if unfold_type == None:  
-          vel = grid_data(volume, "velocity")
-      else:
-          vel = grid_data(volume, "unfolded velocity")
+       if unfold_type == None:  
+           vel = grid_data(volume, "velocity", LatLon=cLatLon)
+       else:
+           vel = grid_data(volume, "unfolded velocity", LatLon=cLatLon)
           
 # Mask it off based on dictionary parameters set at top
 
-      if _grid_dict['mask_vr_with_dbz']:
-          vel = vel_masking(vel, ref, volume)
+       if _grid_dict['mask_vr_with_dbz']:
+           vel = vel_masking(vel, ref, volume)
     
-      pyROTH_regrid_cpu = timeit.time() - tim0
+       pyROTH_regrid_cpu = timeit.time() - tim0
   
-      print "\n Time for gridding fields: {} seconds".format(pyROTH_regrid_cpu)
+       print "\n Time for gridding fields: {} seconds".format(pyROTH_regrid_cpu)
     
-      if plot_grid:
-          plottime = grid_plot(ref, vel, sweep_num, fsuffix=out_filenames[n], \
-                     shapefiles=options.shapefiles, interactive=options.interactive)
+       if plot_grid:
+           plottime = grid_plot(ref, vel, sweep_num, fsuffix=out_filenames[n], \
+                      shapefiles=options.shapefiles, interactive=options.interactive, LatLon=cLatLon)
 
-      if options.write == True:      
-          ret = write_DART_ascii(vel, filename=out_filenames[n]+"_VR", obs_error=[_obs_errors['velocity']])
-          ret = write_DART_ascii(ref, filename=out_filenames[n]+"_RF", obs_error=[_obs_errors['reflectivity'],\
-                                                                                 _obs_errors['0reflectivity']])
-          ret = write_radar_file(ref, vel, filename=out_filenames[n])
+       if options.write == True:      
+           ret = write_DART_ascii(vel, filename=out_filenames[n]+"_VR", obs_error=[_obs_errors['velocity']])
+           ret = write_DART_ascii(ref, filename=out_filenames[n]+"_RF", obs_error=[_obs_errors['reflectivity'],\
+                                                                                  _obs_errors['0reflectivity']])
+           ret = write_radar_file(ref, vel, filename=out_filenames[n])
   
-  pyROTH_cpu_time = timeit.time() - t0
+   pyROTH_cpu_time = timeit.time() - t0
 
-  print "\n Time for pyROTH operations: {} seconds".format(pyROTH_cpu_time)
+   print "\n Time for pyROTH operations: {} seconds".format(pyROTH_cpu_time)
 
-  print "\n PROGRAM pyROTH COMPLETED\n"
+   print "\n PROGRAM pyROTH COMPLETED\n"

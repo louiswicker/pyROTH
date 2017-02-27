@@ -1064,16 +1064,10 @@ class pyDART():
                 z      = N.where(data['z'] != _missing, data['z']/1000., _missing)
                 az     = N.where(data['azimuth']   != _missing, data['azimuth'],   _missing)
                 el     = N.where(data['elevation'] != _missing, data['elevation'], _missing)
+                sat0   = N.where(data['satellite'][:,0] != _missing, data['z']/1000., _missing)
+                sat1   = N.where(data['satellite'][:,1] != _missing, data['z']/1000., _missing)
+                sat2   = N.where(data['satellite'][:,2] != _missing, data['z']/1000., _missing)
 
-                print("Printing values that seem to be whole numbers")
-                print("%s %s %s" % ("\n", "="*100, "\n"))
-                print "Index     Variable    Value  Date/Time       Lat    Lon    X(km)  Y(km)  Z(km)      AZ        EL"
-                
-                for n in range(0,len(self.index)):
-                        if( round(10*value[n]) - 10*value[n] == 0.0):
-                            print("%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
-                             % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n]))
-                
                 if dumplength == True:
                     dumplength = len(self.index)
                     print
@@ -1081,26 +1075,26 @@ class pyDART():
                         print("Printing ALL the values, hope it does not take too long because the list has %d entries" % 
                                dumplength)
                     print("%s %s %s" % ("\n", "="*100, "\n"))
-                    print "Index     Variable    Value  Date/Time       Lat    Lon    X(km)  Y(km)  Z(km)      AZ        EL"
+                    print "    Index       Variable      Value    Date/Time       Lat    Lon    X(km)  Y(km)  Z(km)      AZ        EL"
                     
                     for n in range(0,dumplength-1):
-                        print("%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
-                             % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n]))
+                        print("%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f  %5.1f  %5.1f  %5.1f" \
+                          % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n], sat0[n], sat1[n], sat2[n]))
                 else:
                     dumplength = min(100,len(self.index))
                     print
                     if self.verbose:
                         print("Printing the first and last 100 values of search indices")
                     print("%s %s %s" % ("\n", "="*100, "\n"))
-                    print("Index     Variable    Value          Date/Time           Lat        Lon        X(km)      Y(km)      Z(km)     AZ      EL")
+                    print("    Index     Variable        Value          Date/Time           Lat        Lon        X(km)      Y(km)      Z(km)     AZ      EL")
                     
                     for n in range(0,dumplength-1):
-                        print("%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
-                          % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n]))
+                        print("%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f  %5.1f  %5.1f  %5.1f" \
+                          % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n], sat0[n], sat1[n], sat2[n]))
                     
                     for n in range(len(time)-dumplength,len(time)):
-                        print("%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f" \
-                          % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n]))
+                        print("%7d     %s     %9.5f    %s  %9.4f  %9.4f  %9.4f  %9.4f  %9.5f  %5.1f  %5.1f  %5.1f  %5.1f  %5.1f" \
+                          % (number[n], variable.upper(), value[n], time[n], lat[n], lon[n], x[n], y[n], z[n], az[n], el[n], sat0[n], sat1[n], sat2[n]))
             else:
                 print "NO OBSERVATIONS FOUND FOR ", variable.upper()
         
@@ -1354,17 +1348,15 @@ class pyDART():
                 row["kind"] == ObType_LookUp("GOES_LWP_PATH") or 
                 row["kind"] == ObType_LookUp("GOES_CWP_ZERO")):
                 stuff = fi.readline()
-                if stuff.find("2*"): 
-                    row["satellite"][0] = -990.
-                    row["satellite"][1] = -990.
-                    stuff = fi.readline().split()
-                    row["satellite"][2] = N.float(stuff[0])
+                if stuff.find("2*") > 0: 
+                    row["satellite"][0] = stuff.split(" 2*")[1]
+                    row["satellite"][1] = stuff.split(" 2*")[1]
                 else:
-                    stuff = stuff.split()
+                    stuff = stuff.split(",")
                     row["satellite"][0] = N.rad2deg(read_double_precision_string(stuff[0]))
                     row["satellite"][1] = N.rad2deg(read_double_precision_string(stuff[1]))
-                    stuff = fi.readline().split()
-                    row["satellite"][2] = N.float(stuff[0])
+                stuff = fi.readline().split()
+                row["satellite"][2] = N.float(stuff[0])
 
 # Since pyDart has "standard" integer IDs for observation types, we need to "reset" the "kind" integer
             
@@ -2339,6 +2331,7 @@ def main(argv=None):
     parser.add_option(      "--stats",       dest="stats",     default=False, help = "Gives basic stats for variable, helpful to compare files",   action="store_true")
     parser.add_option("-d", "--dir",         dest="dir",       default=None,  nargs=2, type="string", help = "Directory of files to process and file suffix [*.out, *VR.h5]") 
     parser.add_option(      "--ascii2hdf",   dest="ascii2hdf", default=False, help = "Boolean flag to convert ascii DART file to HDF5 DARTfile",   action="store_true")
+
     parser.add_option(      "--hdf2ascii",   dest="hdf2ascii", default=False, help = "Boolean flag to convert HDF5 DART file to ascii DART file",  action="store_true")
     parser.add_option(      "--nc2hdf",      dest="nc2hdf",    type="string", help = "File name of file or directory to convert netcdf W2 files to HDF5-DART")
     parser.add_option(      "--mrms",        dest="mrms",      type="string", help = "File name of file or directory to convert netCDF MRMS files to HDF5-DART")
@@ -2509,10 +2502,11 @@ def main(argv=None):
         if myDART.verbose:  print("\n PyDart:  Listing file contents")
         myDART.file(filename = options.file)
         myDART.list()
+
     if options.list and options.variable != None:
         if myDART.verbose:  print("\n PyDart:  Listing information requested about variable:  ", options.variable)
         myDART.file(filename = options.file)
-        myDART.list(variable = options.variable, dumplength = options.dump)
+        myDART.list(variable = options.variable, dumplength = True)
     
     if options.stats:
         if myDART.verbose:  print("\n PyDart:  Creating stats")
