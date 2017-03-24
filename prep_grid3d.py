@@ -37,6 +37,15 @@ from dart_tools import *
 
 # missing value
 _missing = -9999.
+_plot_counties = True
+
+# Colorscale information
+_ref_scale = (0.,74.)
+_vr_scale  = (-40.,40.)
+
+# Colortables
+_ref_ctable = cm.NWSRef
+_vr_ctable  = cm.Carbone42
 
 ##########################################################################################
 # Parameter dict for reflectivity masking
@@ -46,11 +55,12 @@ _grid_dict = {
               'halo_footprint'  : 4,
               'max_height'      : 10000.,
               'zero_levels'     : [6000.], 
-              'min_dbz_analysis': 20.0,
-              'min_dbz_zeros'   : 20.0,
+              'min_dbz_analysis': 10.0,
+              'min_dbz_zeros'   : 10.0,
               'reflectivity'    : 5.0,
               '0reflectivity'   : 5.0, 
-              'levels'          : [1,2,3,4,5,6,8,10,12,14, 16, 18]
+              'levels'          : [1,2,3,4,5,6,8,10,12,14, 16, 18],
+              'QC_info'         : [[10.,5.],[20.,1.]],
              }
 
 #=========================================================================================
@@ -185,7 +195,7 @@ def grid_plot(ref, sweep, fsuffix=None, shapefiles=None, interactive=True):
   cmapr.set_bad('white',1.0)
   cmapr.set_under('white',1.0)
 
-  cmapv = cm.BuDRd18
+  cmapv = cm.Carbone42
   cmapv.set_bad('white',1.)
   cmapv.set_under('black',1.)
   cmapv.set_over('black',1.)
@@ -228,6 +238,7 @@ def grid_plot(ref, sweep, fsuffix=None, shapefiles=None, interactive=True):
   xe = np.append(xg-dx2, [xg[-1] + dx2])
   ye = np.append(yg-dy2, [yg[-1] + dy2])
 
+
 # REFLECTVITY PLOT
 
   if shapefiles:
@@ -238,7 +249,7 @@ def grid_plot(ref, sweep, fsuffix=None, shapefiles=None, interactive=True):
   bgmap.drawparallels(range(10,80,1),    labels=[1,0,0,0], linewidth=0.5, ax=ax1)
   bgmap.drawmeridians(range(-170,-10,1), labels=[0,0,0,1], linewidth=0.5, ax=ax1)
 
-  im1 = bgmap.pcolormesh(xe, ye, ref.data[sweep], cmap=cmapr, norm=normr, ax=ax1)
+  im1 = bgmap.pcolormesh(xe, ye, ref.data[sweep], cmap=cmapr, vmin = _ref_scale[0], vmax = _ref_scale[1], ax=ax1)
   cbar = bgmap.colorbar(im1,location='right')
   cbar.set_label('Reflectivity (dBZ)')
   ax1.set_title('Thresholded Reflectivity (Gridded)')
@@ -372,7 +383,8 @@ def main(argv=None):
     
       if options.write == True:      
           ret = write_DART_ascii(ref_obj, filename=out_filename, levels=_grid_dict['levels'],
-                                 obs_error=[_grid_dict['reflectivity'],_grid_dict['0reflectivity']])
+                                 obs_error=[_grid_dict['reflectivity'],_grid_dict['0reflectivity']], 
+                                 QC_info=_grid_dict['QC_info'])
 
 
 #-------------------------------------------------------------------------------

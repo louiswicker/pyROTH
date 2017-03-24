@@ -40,9 +40,9 @@ _prep_string   = "prep_nexrad.py --start %s --end %s %s -r %s >& out_prep_%s %s 
 
 _pyRoth_string = "pyROTH.py -d %s -u None -w -o roth_%s >& log_roth_%s"
 
-_pyDart_string = 'pyDart.py -d roth_%s "*VR.out" --ascii2hdf >& log_dart_%s'
+_pyDart_string = 'pyDart.py -d roth_%s "%s" --ascii2hdf >& log_dart_%s'
 
-_merge_string  = 'pyDart.py -f %s -d roth_%s "*VR.h5" --merge >& log_merge_%s'
+_merge_string  = 'pyDart.py -f %s -d roth_%s "%s" --merge >& log_merge_%s'
 
 debug = True
 
@@ -71,7 +71,7 @@ def get_folder_size(start_path = '.'):
 #=======================================================================================================================
 # Parse and run NEWS csh radar file
 
-def parse_NEWSe_radar_file(radar_file_csh, start, finish, no_down=False):
+def parse_NEWSe_radar_file(radar_file_csh, start, finish, no_down=False, no_anal=False):
 
 # Parse radars out of the shell script - NOTE - line that contains radar list is line=6 HARDCODED
 
@@ -85,23 +85,27 @@ def parse_NEWSe_radar_file(radar_file_csh, start, finish, no_down=False):
     for radar in radar_list:
         print(" \n Now processing %s \n " % radar)
 
+        str_opt = ""
         if no_down:
-            cmd = _prep_string % ( start.strftime("%Y,%m,%d,%H"), finish.strftime("%Y,%m,%d,%H"), "--nodown", radar, radar, "&" )
-        else:
-            cmd = _prep_string % ( start.strftime("%Y,%m,%d,%H"), finish.strftime("%Y,%m,%d,%H"), "", radar, radar, "&" )
+            str_opt = "--nodown"
+        if no_anal:
+            str_opt = "%s %s" % (str_opt, "--noanal")
+
+        cmd = _prep_string % ( start.strftime("%Y,%m,%d,%H"), finish.strftime("%Y,%m,%d,%H"), str_opt, radar, radar, "&" )
         
         if debug:
             print(cmd)
 
         os.system(cmd)
 
-    old_size = 0
-    new_size = get_folder_size(start_path = '.')
-    cpu.sleep(_chk_dir_size)
-    while old_size < new_size:
-         old_size = new_size
-         new_size = get_folder_size(start_path = '.')
-         cpu.sleep(_chk_dir_size)
+    if not no_down:
+        old_size = 0
+        new_size = get_folder_size(start_path = '.')
+        cpu.sleep(_chk_dir_size)
+        while old_size < new_size:
+            old_size = new_size
+            new_size = get_folder_size(start_path = '.')
+            cpu.sleep(_chk_dir_size)
 
     return
 #=======================================================================================================================
@@ -186,7 +190,7 @@ if __name__ == "__main__":
 
     if options.newse:
        print(" \n now processing NEWSe radar file....\n ")
-       parse_NEWSe_radar_file(options.newse, start, finish, no_down=options.no_down)
+       parse_NEWSe_radar_file(options.newse, start, finish, no_down=options.no_down, no_anal=options.no_anal)
        sys.exit(0)
         
     if options.radar == None:
@@ -200,7 +204,7 @@ if __name__ == "__main__":
     if options.dir == None:
         out_dir = options.radar
     else:
-        out_dir = option.dir
+        out_dir = options.dir
 
 # Make sure we got somewhere to put the radar files
  
@@ -261,19 +265,33 @@ if __name__ == "__main__":
 
 # Convert to h5 pyDart
 
-    cmd = _pyDart_string % ( radar, radar )
+    cmd = _pyDart_string % ( radar, "*VR.out", radar )
     if debug:
         print(cmd)
     os.system(cmd)
+
+# Convert to h5 pyDart
+
+#   cmd = _pyDart_string % ( radar, "*RF.out", radar )
+#   if debug:
+#       print(cmd)
+#   os.system(cmd)
     
 # Merge the h5 files
 
     VR_file = "obs_seq_%s_%s_VR.h5" % (start.strftime("%Y_%m_%d"), radar)
-    cmd = _merge_string % ( VR_file, radar, radar )
+    cmd = _merge_string % ( VR_file, radar, "*VR.h5", radar )
     if debug:
         print(cmd)
-        
+
     os.system(cmd)
+        
+#   RF_file = "obs_seq_%s_%s_RF.h5" % (start.strftime("%Y_%m_%d"), radar)
+#   cmd = _merge_string % ( RF_file, radar, "*RF.h5", radar )
+#   if debug:
+#       print(cmd)
+#       
+#   os.system(cmd)
     
     cpu0 = cpu.time() - c0
     

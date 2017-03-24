@@ -5,12 +5,12 @@ import sys, os
 
 start   = DT.datetime(2016,5,24,18,0,0)
 delta_t = DT.timedelta(seconds=150)
-finish  = DT.datetime(2016,5,24,19,1,0)
+finish  = DT.datetime(2016,5,25,3,1,0)
 
 RunIt = True
 
 infile = "obs_seq_2016_05_24_VR.h5"
-outdir = "24May_sort"
+outdir = "obs_seq_vr_files"
 prefix = "obs_seq_VR"
 pyDart_exe = "./pyDart.py"
 
@@ -20,7 +20,11 @@ if not os.path.exists(outdir):
 # copy the file to make sure we dont overwrite it
 
 cmd = "cp %s tmp.h5" % infile
-os.system(cmd)
+ret = os.system(cmd)
+
+if ret != 0:
+    print(" \n ERROR ERROR - temporary file could not be created - check name of input file, exiting\n")
+    sys.exit(-1)
 
 while start < finish:
     begin = start - delta_t

@@ -2070,7 +2070,7 @@ class pyDART():
             if attr.col('num_copies')[0] == 2:
                 fi.write("   %20.14f\n" % row["truth"]  )
 
-            fi.write("   %20.14f\n" % 1.0 )    # dummy QC flag
+            fi.write("   %20.14f\n" % row["qc"] )    # QC flag
             
 # Code (from RLT) to output correct index number for each ob in the output DART file
 

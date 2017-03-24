@@ -48,31 +48,35 @@ debug = True
 _missing = -99999.
 
 # This flag adds an k/j/i index to the DART file, which is the index locations of the gridded data
-_write_grid_indices = True
+_write_grid_indices = False
 
 # True here uses the basemap county database to plot the county outlines.
 _plot_counties = True
+
+# Colorscale information
+_ref_scale = (0.,74.)
+_vr_scale  = (-40.,40.)
 
 # Need for coordinate projection
 truelat1, truelat2 = 30.0, 60.0
 
 # Parameter dict for Gridding
 _grid_dict = {
-              'grid_spacing_xy' : 6000.,       # meters
-              'domain_radius_xy': 200000.,     # meters
+              'grid_spacing_xy' : 5000.,         # meters
+              'domain_radius_xy': 150000.,       # meters
               'anal_method'     : 'Cressman',    # options are Cressman, Barnes (1-pass)
-              'ROI'             : 6000./0.707,   # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
-              'min_count'       : 6,            # regular radar data ~3, high-res radar data ~ 10
-              'min_weight'      : 0.2,          # min weight for analysis Cressman ~ 0.3, Barnes ~ 2
+              'ROI'             : 5000.*0.707,   # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
+              'min_count'       : 6,             # regular radar data ~3, high-res radar data ~ 10
+              'min_weight'      : 0.2,           # min weight for analysis Cressman ~ 0.3, Barnes ~ 2
               'min_range'       : 10000.,        # min distance away from the radar for valid analysis (meters)
-              'projection'      : 'lcc',       # map projection to use for gridded data
+              'projection'      : 'lcc',         # map projection to use for gridded data
               'mask_vr_with_dbz': True,
-              '0dbz_obtype'     : False,
+              '0dbz_obtype'     : True,
               'thin_zeros'      : 4,
               'halo_footprint'  : 3,
               'nthreads'        : 1,
               'max_height'      : 10000.,
-              'MRMS_zeros'      : [True, 3000.],
+              'MRMS_zeros'      : [True, 6000.],
               'model_grid_size' : [750000., 750000.]
              }
 
@@ -87,7 +91,7 @@ _obs_errors = {
 # Parameter dict setting radar data parameters
                
 _radar_parameters = {
-                     'min_dbz_analysis': 20.0, 
+                     'min_dbz_analysis': 10.0, 
                      'max_range': 150000.,
                      'max_Nyquist_factor': 2,    # dont allow output of velocities > Nyquist*factor
                      'field_label_trans': [False, "DBZC", "VR"]  # RaxPol 31 May - must specify for edit sweep files
@@ -506,6 +510,7 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
       k = it.multi_index[0]
       j = it.multi_index[1]
       i = it.multi_index[2]
+      print i,j,k
       
       if data.mask[k,j,i] == True:   # bad values
           pass
@@ -514,7 +519,11 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
 
 # time of observations is the mean time of each sweep
           
-          sw_time = dt_time + DT.timedelta(seconds=obs.sweep_time[k])
+          try:
+              sw_time = dt_time + DT.timedelta(seconds=obs.sweep_time[k])
+          except:
+              sw_time = dt_time + DT.timedelta(seconds=obs.sweep_time.max())
+
           days    = sw_time.days
           seconds = sw_time.seconds
   
@@ -828,7 +837,7 @@ def grid_data(volume, field, LatLon=None):
    tt = timeit.clock()
   
    for n, sweep_data in enumerate(volume.iter_field(field)):
-       if n > 2:  break
+       print n
        if n == 0:
            begin = 0
            end   = volume.sweep_end_ray_index['data'][n] + 1
@@ -935,7 +944,7 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True, 
   cmapr.set_bad('white',1.0)
   cmapr.set_under('white',1.0)
 
-  cmapv = cm.BuDRd18
+  cmapv = cm.Carbone42
   cmapv.set_bad('white',1.)
   cmapv.set_under('black',1.)
   cmapv.set_over('black',1.)
@@ -996,7 +1005,7 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True, 
   bgmap.drawparallels(range(10,80,1),    labels=[1,0,0,0], linewidth=0.5, ax=ax1)
   bgmap.drawmeridians(range(-170,-10,1), labels=[0,0,0,1], linewidth=0.5, ax=ax1)
 
-  im1 = bgmap.pcolormesh(xe, ye, ref.data[sweep], cmap=cmapr, norm=normr, ax=ax1)
+  im1 = bgmap.pcolormesh(xe, ye, ref.data[sweep], cmap=cmapr, vmin = _ref_scale[0], vmax = _ref_scale[1], ax=ax1)
   cbar = bgmap.colorbar(im1, location='right')
   cbar.set_label('Reflectivity (dBZ)')
   ax1.set_title('Thresholded Reflectivity (Gridded)')
@@ -1010,7 +1019,7 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True, 
 
   try:
       r_mask = (ref.zero_dbz.mask == False)
-       print("\n Plotting zeros from MRMS level)\n")
+      print("\n Plotting zeros from MRMS level)\n")
       bgmap.scatter(xg_2d[r_mask], yg_2d[r_mask], s=25, facecolors='none', \
                     edgecolors='k', alpha=1.0, ax=ax1) 
                     
@@ -1040,7 +1049,7 @@ def grid_plot(ref, vel, sweep, fsuffix=None, shapefiles=None, interactive=True, 
   bgmap.drawparallels(range(10,80,1),labels=[1,0,0,0], linewidth=0.5, ax=ax2)
   bgmap.drawmeridians(range(-170,-10,1),labels=[0,0,0,1],linewidth=0.5, ax=ax2)
   
-  im1 = bgmap.pcolormesh(xe, ye, vel.data[sweep], cmap=cmapv, norm=normv, ax=ax2)
+  im1 = bgmap.pcolormesh(xe, ye, vel.data[sweep], cmap=cmapv, vmin=_vr_scale[0], vmax=_vr_scale[1], ax=ax2)
   cbar = bgmap.colorbar(im1,location='right')
   cbar.set_label('Dealised Radial Velocity (meters_per_second)')
   ax2.set_title('Thresholded, Unfolded Radial Velocity (Gridded)') 

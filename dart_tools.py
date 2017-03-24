@@ -217,7 +217,7 @@ def beam_elv(sfc_range, z):
 #
 ########################################################################################  
 def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_dbz_obtype,
-                     levels = None):
+                     levels = None, QC_info=None):
 
    if filename == None:
        print("\n write_DART_ascii:  No output file name is given, writing to %s" % "obs_seq.txt")
@@ -243,7 +243,13 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_d
    hgts       = obs.zg + obs.radar_hgt
    vert_coord = 3
    kind       = ObType_LookUp(obs.field.upper())
-   truth      = 1.0  # dummy variable
+
+   if QC_info != None:
+       print("\n QC_info is specified:  %f dbz %f qc / %f dbz %f qc" % (QC_info[0][0],
+                                                                        QC_info[0][1],
+                                                                        QC_info[1][0],
+                                                                        QC_info[1][1]))
+   QC_default = 1.0
 
 # Fix the negative lons...
 
@@ -323,7 +329,17 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_d
                fi.write(" OBS            %d\n" % (nobs) )
               
            fi.write("   %20.14f\n" % data[k,j,i]  )
-           fi.write("   %20.14f\n" % truth )
+
+# Special QC flag processing so we can use low-reflectivity for additive noise
+
+           if ( (kind == ObType_LookUp("REFLECTIVITY")) ):
+               if ( ( QC_info != None ) and (data[k,j,i] >= QC_info[0][0]) 
+                                        and (data[k,j,i]  < QC_info[1][0])):
+                   fi.write("   %20.14f\n" % QC_info[0][1] )
+               else:
+                   fi.write("   %20.14f\n" % QC_info[1][1] )
+           else:
+                   fi.write("   %20.14f\n" % QC_default )
             
            if nobs == 1: 
                fi.write(" %d %d %d\n" % (-1, nobs+1, -1) ) # First obs.
