@@ -54,7 +54,7 @@ _grid_dict = {
               'thin_zeros'      : 3,
               'halo_footprint'  : 4,
               'max_height'      : 10000.,
-              'zero_levels'     : [6000.], 
+              'zero_levels'     : [3000.], 
               'min_dbz_analysis': 10.0,
               'min_dbz_zeros'   : 10.0,
               'reflectivity'    : 5.0,
@@ -89,7 +89,9 @@ def get_dir_files(dir, pattern, Quiet=False):
         print(" %s is not a directory, exiting" % dir)
         sys.exit(1)
         
-    filenames = glob.glob("%s/%s" % (dir, pattern))
+    filenames = glob.glob('%s/"%s"' % (dir, pattern))
+
+    print dir, pattern, filenames, '%s/"%s"' % (dir, pattern)
     
     if not Quiet:
         print("\n Processing %d files in the directory:  %s" % (len(filenames), dir))
@@ -295,11 +297,14 @@ def main(argv=None):
 # Command line interface 
 #
    parser = OptionParser()
-   parser.add_option("-d", "--dir",      dest="dir",     default=None,  type="string", help = "Directory where files are")
+   parser.add_option("-d", "--dir",   dest="dir",    default=None,  type="string", help = "Directory where MRMS files are")
    
-   parser.add_option("-g", "--grep",     dest="grep",    default="*",  type="string", help = "Pattern grep, [*.nc, *VR.h5]")
+   parser.add_option("-l", "--last",  dest="last",   default=False,  \
+                           help = "Boolean flag to only process the last file in the directory", action="store_true")
+ 
+   parser.add_option("-g", "--grep",  dest="grep",   default="*.nc", type="string", help = "Pattern grep, [*.nc, *VR.h5]")
    
-   parser.add_option("-w", "--write",    dest="write",   default=False, \
+   parser.add_option("-w", "--write", dest="write",   default=False, \
                            help = "Boolean flag to write DART ascii file", action="store_true")
                            
    parser.add_option("-o", "--out",      dest="out_dir",  default="ref_files",  type="string", \
@@ -336,9 +341,14 @@ def main(argv=None):
    if not os.path.exists(options.out_dir):
        os.mkdir(options.out_dir)
 
-   print("\n prep_grid3d:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dir))
-   print("\n prep_grid3d:  First file is %s\n" % (in_filenames[0]))
-   print("\n prep_grid3d:  Last  file is %s\n" % (in_filenames[-1]))
+   if not options.last:
+       print("\n prep_grid3d:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dir))
+       print("\n prep_grid3d:  First file is %s\n" % (in_filenames[0]))
+       print("\n prep_grid3d:  Last  file is %s\n" % (in_filenames[-1]))
+   else:
+       last_file = in_filenames[-1]
+       in_filenames = [last_file]
+       print("\n prep_grid3d:  Last_file is true, only processing %s\n" % (in_filenames[:]))
 
    for n, file in enumerate(in_filenames):
    

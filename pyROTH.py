@@ -36,6 +36,11 @@ import datetime as DT
 import cressman
 import pyart
 
+#from metpy.gridding.gridding_functions import calc_kappa
+#from metpy.gridding.interpolation import barnes_point, cressman_point
+#from metpy.gridding.triangles import dist_2
+#from metpy.gridding.interpolation import inverse_distance
+
 from pyproj import Proj
 import pylab as plt  
 from mpl_toolkits.basemap import Basemap
@@ -62,10 +67,10 @@ truelat1, truelat2 = 30.0, 60.0
 
 # Parameter dict for Gridding
 _grid_dict = {
-              'grid_spacing_xy' : 5000.,         # meters
+              'grid_spacing_xy' : 3000.,         # meters
               'domain_radius_xy': 150000.,       # meters
               'anal_method'     : 'Cressman',    # options are Cressman, Barnes (1-pass)
-              'ROI'             : 5000.*0.707,   # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
+              'ROI'             : 3000.*0.707,   # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
               'min_count'       : 6,             # regular radar data ~3, high-res radar data ~ 10
               'min_weight'      : 0.2,           # min weight for analysis Cressman ~ 0.3, Barnes ~ 2
               'min_range'       : 10000.,        # min distance away from the radar for valid analysis (meters)
@@ -742,7 +747,7 @@ def grid_data(volume, field, LatLon=None):
        xoffset, yoffset = map(radar_lon, radar_lat) 
        lons, lats = map(xg, yg, inverse=True)
       
-   else:  # grid grid based on model grid center LatLon
+   else:  # grid based on model grid center LatLon
    
        grid_spacing_xy = _grid_dict['grid_spacing_xy']
        nx              = 1 + np.int(_grid_dict['model_grid_size'][0] / grid_spacing_xy)
@@ -864,6 +869,8 @@ def grid_data(volume, field, LatLon=None):
        iy = np.searchsorted(yg, yob)
     
        if obs.size > 0:
+#          tmp = inverse_distance(xob, yob, obs, xg, yg, 2.0*grid_spacing_xy, gamma=None, kappa=None,
+#                    min_neighbors=min_count, kind='cressman')
            tmp = cressman.obs_2_grid2d(obs, xob, yob, xg, yg, ix, iy, anal_method, min_count, min_weight, min_range, \
                                        2.0*grid_spacing_xy, _missing)
            new_mask = (tmp <= _missing)
@@ -880,14 +887,16 @@ def grid_data(volume, field, LatLon=None):
    # Create z-field
 
        zobs= z.ravel()
-       xob = x.ravel()
-       yob = y.ravel()
+       xob = x.ravel() + xoffset
+       yob = y.ravel() + yoffset
 
        zobs = np.where( zobs < 0.0, 0.0, zobs)
     
        ix = np.searchsorted(xg, xob)
        iy = np.searchsorted(yg, yob)
 
+#      tmp=inverse_distance(xob, yob, zobs, xg, yg, 2.0*grid_spacing_xy, gamma=None, kappa=None,
+#                    min_neighbors=min_count, kind='cressman')
        tmp = cressman.obs_2_grid2d(zobs, xob, yob, xg, yg, ix, iy, 1, 1, 0.1, min_range, 2.0*grid_spacing_xy, -99999.)
        new_mask = (tmp == -99999.)
        zgrid[n] = np.ma.array(tmp, mask=new_mask)
