@@ -54,7 +54,7 @@ _grid_dict = {
               'thin_zeros'      : 3,
               'halo_footprint'  : 4,
               'max_height'      : 10000.,
-              'zero_levels'     : [3000.], 
+              'zero_levels'     : [5000.], 
               'min_dbz_analysis': 10.0,
               'min_dbz_zeros'   : 10.0,
               'reflectivity'    : 5.0,
@@ -297,8 +297,8 @@ def main(argv=None):
    parser = OptionParser()
    parser.add_option("-d", "--dir",   dest="dir",    default=None,  type="string", help = "Directory where MRMS files are")
    
-   parser.add_option("-l", "--last",  dest="last",   default=False,  \
-                           help = "Boolean flag to only process the last file in the directory", action="store_true")
+   parser.add_option(      "--realtime",  dest="realtime",   default=None,  \
+               help = "Boolean flag to uses this YYYYMMDDHHMM time stamp for the realtime processing")
  
    parser.add_option("-g", "--grep",  dest="grep",   default="*.nc", type="string", help = "Pattern grep, [*.nc, *VR.h5]")
    
@@ -328,34 +328,68 @@ def main(argv=None):
    else:
        sweep_num = options.plot
        plot_grid = True
-       
+
+   if options.realtime != None:
+       year = int(options.realtime[0:4])
+       mon  = int(options.realtime[4:6])
+       day  = int(options.realtime[6:8])
+       hour = int(options.realtime[8:10])
+       minute = int(options.realtime[10:12])
+       a_time = DT.datetime(year, mon, day, hour, minute, 0)
+       if options.out_dir != None:
+           options.out_dir = os.path.join(options.out_dir, a_time.strftime("%Y%m%d"))
+       else:
+           options.out_dir = a_time.strftime("%Y%m%d")
+
 #-------------------------------------------------------------------------------
 
-   in_filenames = get_dir_files(options.dir, options.grep, Quiet=False)
-   out_filenames = []
+# if realtime, now find the file created within T+5 of analysis
+
+   if options.realtime != None:
+
+       in_filenames = get_dir_files(options.dir, options.grep, Quiet=True)
+
+       for n, file in enumerate(in_filenames):
+           f_time = DT.datetime.strptime(os.path.basename(file)[-18:-3], "%Y%m%d-%H%M%S")
+           if (f_time > a_time - DT.timedelta(minutes = 1)) and (f_time <= a_time + DT.timedelta(minutes = 6)):
+                last_file    = in_filenames[n]
+
+       in_filenames = [last_file]
+       print("\n prep_grid3d:  RealTime FLAG is true, only processing %s\n" % (in_filenames[:]))
+       rlt_filename = "%s_%s" % ("obs_seq_RF", a_time.strftime("%Y%m%d%H%M"))
+
+   else:
+       in_filenames = get_dir_files(options.dir, options.grep, Quiet=False)
+       out_filenames = []
+       print("\n prep_grid3d:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dir))
+       print("\n prep_grid3d:  First file is %s\n" % (in_filenames[0]))
+       print("\n prep_grid3d:  Last  file is %s\n" % (in_filenames[-1]))
    
  # Make sure there is a directory to write files into....
  
    if not os.path.exists(options.out_dir):
-       os.mkdir(options.out_dir)
-
-   if not options.last:
-       print("\n prep_grid3d:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dir))
-       print("\n prep_grid3d:  First file is %s\n" % (in_filenames[0]))
-       print("\n prep_grid3d:  Last  file is %s\n" % (in_filenames[-1]))
-   else:
-       last_file = in_filenames[-1]
-       in_filenames = [last_file]
-       print("\n prep_grid3d:  Last_file is true, only processing %s\n" % (in_filenames[:]))
+       try:
+           os.mkdir(options.out_dir)
+       except:
+           print("\n**********************   FATAL ERROR!!  ************************************")
+           print("\n PREP_GRID3D:  Cannot create output dir:  %s\n" % options.out_dir)
+           print("\n**********************   FATAL ERROR!!  ************************************")
 
    for n, file in enumerate(in_filenames):
    
       print ' ================================================================================'
 
-      str_time     = "%s_%s" % (os.path.basename(file)[-18:-10], os.path.basename(file)[-9:-3])
-      prefix       = "obs_seq_RF_%s" % str_time
-      out_filename = os.path.join(options.out_dir, prefix)
-      print(" Out filename:  %s\n" % out_filename)
+      if options.realtime != None:
+          out_filename = os.path.join(options.out_dir, rlt_filename)
+          time         = a_time
+	  print(" Out filename:  %s\n" % out_filename)
+      else:
+          print options.realtime == None
+          str_time     = "%s_%s" % (os.path.basename(file)[-18:-10], os.path.basename(file)[-9:-3])
+          prefix       = "obs_seq_RF_%s" % str_time
+          out_filename = os.path.join(options.out_dir, prefix)
+          time         = DT.datetime.strptime(file[-18:-3], "%Y%m%d-%H%M%S")
+          print(" Out filename:  %s\n" % out_filename)
    
       f       = ncdf.Dataset(file, "r")
       missing = f.MissingData
@@ -367,7 +401,6 @@ def main(argv=None):
       lats    = f.variables['Lat'][...]
       msl     = f.variables['Height'][...]
       height0 = f.Height
-      time    = DT.datetime.strptime(file[-18:-3], "%Y%m%d-%H%M%S")
       dtime   = (time - DT.datetime(1970, 1, 1, 0, 0)).total_seconds
 
       f.close()
