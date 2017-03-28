@@ -89,10 +89,8 @@ def get_dir_files(dir, pattern, Quiet=False):
         print(" %s is not a directory, exiting" % dir)
         sys.exit(1)
         
-    filenames = glob.glob('%s/"%s"' % (dir, pattern))
+    filenames = glob.glob("%s/Reflect*.nc" % (dir))
 
-    print dir, pattern, filenames, '%s/"%s"' % (dir, pattern)
-    
     if not Quiet:
         print("\n Processing %d files in the directory:  %s" % (len(filenames), dir))
         print("\n First file is %s" % (os.path.basename(filenames[0])))
