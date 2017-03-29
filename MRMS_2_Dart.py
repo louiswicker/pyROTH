@@ -167,9 +167,7 @@ def kill_MRMS_Programs():
 
 
 #-------------------------------------------------------------------------------
-def run_Prep_Grid3d():
-
-    today = time.strftime("%Y%m%d")  # use the local time, not GMT to keep days straight
+def run_Prep_Grid3d(today):
 
     obs_seq_out_dir = os.path.join(_MRMS_obs_seq_dir, today)
 
@@ -186,9 +184,12 @@ def run_Prep_Grid3d():
     os.system("%s >> %s" % (cmd, _NEWSe_log_files[0]))
 
 #-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 # Main program
 
-def main(argv=None):
+def run_MRMS(argv=None):
 
 # First call parses the radar.YYYYMMDD.csh file in the NEWSe_real-time directory
 #       and then creates the grid_config.txt file in the MRMS_real-time directory
@@ -200,7 +201,6 @@ def main(argv=None):
 #       needed to run the DOCKER containers which has a list of radars on the end of it
 
     docker_list = run_MRMS_Setup()
-    print docker_list
 
 # Finally, this call runs all the programs, and starts the prep_grid3d.py code to convert
 #       the netCDF4 files that MRMS creates into obs_seq.out files for DART
@@ -211,4 +211,4 @@ def main(argv=None):
 # Main program 
 #
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_MRMS())

@@ -55,12 +55,12 @@ _grid_dict = {
               'halo_footprint'  : 4,
               'max_height'      : 10000.,
               'zero_levels'     : [5000.], 
-              'min_dbz_analysis': 10.0,
-              'min_dbz_zeros'   : 10.0,
+              'min_dbz_analysis': 15.0,
+              'min_dbz_zeros'   : 15.0,
               'reflectivity'    : 5.0,
               '0reflectivity'   : 5.0, 
               'levels'          : [1,2,3,4,5,6,8,10,12,14, 16, 18],
-              'QC_info'         : [[10.,5.],[20.,1.]],
+              'QC_info'         : [[15.,5.],[20.,1.]],
              }
 
 #=========================================================================================
