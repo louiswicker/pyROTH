@@ -8,7 +8,7 @@ import datetime
 
 today = time.strftime("%Y%m%d")
 
-_MRMS_directory = "/work/john.krause/realtime/grid/output"
+_MRMS_input_directory = "/work/john.krause/realtime/grid/output"
 _MRMS_obs_seq   = "/work/john.krause/realtime"
 
 obs_seq_out_dir = os.path.join(_MRMS_obs_seq, today)
@@ -34,6 +34,6 @@ def scheduled_job():
     cmd = "prep_grid3d.py -d %s -w -o %s --realtime %s" % (_MRMS_input_directory, obs_seq_out_dir, str_time)
     print("\n Run_MRMS running job: at %s" % (time.strftime("%Y-%m-%d %H:%M:%S")))
     print(" Command: %s\n" % (cmd))
-#   os.system("%s >> log_prep_grid3d" % cmd)
+    os.system("%s >> log_prep_grid3d" % cmd)
 
 sched.start()

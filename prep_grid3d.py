@@ -336,10 +336,6 @@ def main(argv=None):
        hour = int(options.realtime[8:10])
        minute = int(options.realtime[10:12])
        a_time = DT.datetime(year, mon, day, hour, minute, 0)
-       if options.out_dir != None:
-           options.out_dir = os.path.join(options.out_dir, a_time.strftime("%Y%m%d"))
-       else:
-           options.out_dir = a_time.strftime("%Y%m%d")
 
 #-------------------------------------------------------------------------------
 
