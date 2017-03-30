@@ -43,7 +43,35 @@ _missing = -9999.
 _plot_counties = True
 
 # Colorscale information
-_ref_scale = (0.,74.)
+_ref_scale = np.arange(5,85.,5.0)
+#_ref_scale = np.array((0.0, 10., 20., 35., 50., 65., 75., 85.))
+#_ref_scale = np.array((-10., 0.0, 10. 22.5, 32.5, 37.5, 42.5, 50.,60.,70.,75.,80.,85.))
+print _ref_scale
+#color: -15 0 0 0
+#color: 5 29 37 60
+#color: 17.5 89 155 171
+#color: 22.5  33 186 72
+#color: 32.5 5 101 1
+#color: 37.5 251 252 0 199 176 0
+#color: 42.5 253 149 2 172 92 2
+#color: 50 253 38 0 135 43 22
+#color: 60 193 148 179 200 23 119
+#color: 70 165 2 215 64 0 146
+#color: 75 135 255 253 54 120 142
+#color: 80 173 99 64
+#color: 85 105 0 4
+#color: 95 0 0 0
+
+#color: -30 165 165 165 8 230 230
+#color: 10 0 165 255 0 8 197
+#color: 20 16 255 8 10 126 3
+#color: 35 251 238 0 210 112 2
+#color: 50 255 0 0 171 0 1
+#color: 65 247 1 249 136 63 174
+#color: 75 255 255 255 184 184 184
+#color: 85 184 184 184
+#color: 95 184 184 184
+
 _vr_scale  = (-40.,40.)
 
 # Colortables
@@ -196,17 +224,11 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
 
   from matplotlib.colors import BoundaryNorm
    
-  cmapr = cm.NWSRef
+  cmapr = _ref_ctable
   cmapr.set_bad('white',1.0)
   cmapr.set_under('white',1.0)
 
-  cmapv = cm.Carbone42
-  cmapv.set_bad('white',1.)
-  cmapv.set_under('black',1.)
-  cmapv.set_over('black',1.)
-  
-  normr = BoundaryNorm(np.arange(10, 85, 5), cmapr.N)
-  normv = BoundaryNorm(np.arange(-48, 50, 2), cmapv.N)
+  normr = BoundaryNorm(_ref_scale, cmapr.N)
   
 # Create png file label
 
@@ -254,7 +276,7 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
   bgmap.drawparallels(range(10,80,1),    labels=[1,0,0,0], linewidth=0.5, ax=ax1)
   bgmap.drawmeridians(range(-170,-10,1), labels=[0,0,0,1], linewidth=0.5, ax=ax1)
 
-  im1 = bgmap.pcolormesh(xe, ye, ref.data[sweep], cmap=cmapr, vmin = _ref_scale[0], vmax = _ref_scale[1], ax=ax1)
+  im1 = bgmap.pcolormesh(xe, ye, ref.data[sweep], cmap=cmapr, norm=normr, vmin = _ref_scale.min(), vmax = _ref_scale.max(), ax=ax1)
   cbar = bgmap.colorbar(im1,location='right')
   cbar.set_label('Reflectivity (dBZ)')
   ax1.set_title('Thresholded Reflectivity (Gridded)')

@@ -185,7 +185,7 @@ def run_Prep_Grid3d(today):
 
     str_time = dt.strftime("%Y%m%d%H%M")
 
-    cmd = "prep_grid3d.py -d %s -w -o %s --realtime %s -p 6" % (_MRMS_input_dir, obs_seq_out_dir, str_time)
+    cmd = "prep_grid3d.py -d %s -w -o %s --realtime %s -p 4" % (_MRMS_input_dir, obs_seq_out_dir, str_time)
 
     print("\n Prep_Grid3d running job: at %s" % (time.strftime("%Y-%m-%d %H:%M:%S")))
 
