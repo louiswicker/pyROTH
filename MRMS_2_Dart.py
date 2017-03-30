@@ -8,7 +8,7 @@ import subprocess
 
 _MRMS_top_dir            = "/work/john.krause/realtime"
 _MRMS_bin                = "/work/john.krause/bin"
-_NEWSe_top_dir           = "/work/wicker/REALTIME"
+_NEWSe_top_dir           = "/work/wicker/REALTIME/"
 #
 #-------------------------------------------------------------------------------
 #
@@ -17,7 +17,7 @@ _MRMS_obs_seq_dir        = os.path.join(_MRMS_top_dir, "realtime")
 _MRMS_grid_config_file   = os.path.join(_MRMS_top_dir, "grid_config.txt")
 _MRMS_radar_config_file  = os.path.join(_MRMS_top_dir, "radarinfo.dat")
 _MRMS_Grid_Setup_exe     = [os.path.join(_MRMS_bin, "Radar3DGrid_Driver"), "-q", "-c", _MRMS_grid_config_file]
-_MRMS_Init_Docker_exe    = [os.path.join(_MRMS_bin, "initRadar3DGrid"), "-v", "-d", _MRMS_top_dir, "-r"]
+_MRMS_Init_Docker_exe    = [os.path.join(_MRMS_bin, "initRadar3DGrid.pl"), "-v", "-d", _MRMS_top_dir, "-r"]
 _MRMS_Grid_Driver_exe    = [os.path.join(_MRMS_bin, "Radar3DGrid_Driver.cmd")]
 _MRMS_Grid_MsgMaker_exe  = [os.path.join(_MRMS_bin, "Radar3DGrid_MsgMaker.cmd")]
 _MRMS_Kill_All_exe       = [os.path.join(_MRMS_bin, "initRadar3DGrid"), "-s"]
@@ -48,18 +48,14 @@ def run_MRMS_Programs(Init_Dockers):
     print("\n Starting docker programs ")
     with open(_MRMS_log_files[0], 'w') as fp0:
         p = subprocess.Popen(Init_Dockers, stdout=fp0)
-    
-    time.sleep(5)
 
     print("\n Starting Grid_Driver program")
     with open(_MRMS_log_files[1], 'w') as fp1:
-        p = subprocess.Popen(_MRMS_Grid_Driver_exe, stdout=fp1)
-
-    time.sleep(5)
+        p = subprocess.Popen(_MRMS_Grid_Driver_exe, stdout=fp1, shell=True)
 
     print("\n Starting MsgMaker program")
     with open(_MRMS_log_files[2], 'w') as fp2:
-        p = subprocess.Popen(_MRMS_Grid_Driver_exe, stdout=fp2)
+        p = subprocess.Popen(_MRMS_Grid_MsgMaker_exe, stdout=fp2, shell=True)
 
     print("\n Now everything should be running to create NEWSe MRMS files.....")
     print("\n============================================================================")
