@@ -13,7 +13,7 @@ _NEWSe_top_dir           = "/work/wicker/REALTIME/"
 #-------------------------------------------------------------------------------
 #
 _MRMS_input_dir          = os.path.join(_MRMS_top_dir, "grid/output")
-_MRMS_obs_seq_dir        = os.path.join(_MRMS_top_dir, "realtime")
+_MRMS_obs_seq_dir        = os.path.join(_MRMS_top_dir, "")
 _MRMS_grid_config_file   = os.path.join(_MRMS_top_dir, "grid_config.txt")
 _MRMS_radar_config_file  = os.path.join(_MRMS_top_dir, "radarinfo.dat")
 _MRMS_Grid_Setup_exe     = [os.path.join(_MRMS_bin, "Radar3DGrid_Driver"), "-q", "-c", _MRMS_grid_config_file]
@@ -46,6 +46,7 @@ def run_MRMS_Programs(Init_Dockers):
     print("\n MRMS_programs will now start the executables need for radar REF processing")
 
     print("\n Starting docker programs ")
+    print Init_Dockers
     with open(_MRMS_log_files[0], 'w') as fp0:
         p = subprocess.Popen(Init_Dockers, stdout=fp0)
 
@@ -82,11 +83,13 @@ def run_MRMS_Setup():
     end   = len(txt) - 1 #blank line in output
 
     Init_Docker_list = _MRMS_Init_Docker_exe
+    radars = ""
     f = open(_MRMS_radar_config_file,"w")
     for item in txt[start:end]:
         f.write("%s\n" % item)
-        Init_Docker_list.append("%s," % item[0:4])
+        radars = ("%s%s," % (radars, item[0:4]))
     f.close()
+    Init_Docker_list.append(radars)
 
 # Now create the string needed for the
     return Init_Docker_list
@@ -173,7 +176,7 @@ def run_Prep_Grid3d(today):
 
     str_time = dt.strftime("%Y%m%d%H%M")
 
-    cmd = "prep_grid3d.py -d %s -w -o %s --realtime %s" % (_MRMS_input_dir, obs_seq_out_dir, str_time)
+    cmd = "prep_grid3d.py -d %s -w -o %s --realtime %s -p 6" % (_MRMS_input_dir, obs_seq_out_dir, str_time)
 
     print("\n Prep_Grid3d running job: at %s" % (time.strftime("%Y-%m-%d %H:%M:%S")))
 

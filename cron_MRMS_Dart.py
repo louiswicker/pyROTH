@@ -18,6 +18,7 @@ logging.basicConfig()
 sched = BlockingScheduler()
 
 # schedule the main mrms programs
+#you need to move output and directories around, right?
 
 # schedule the prep_grid3d...
 
