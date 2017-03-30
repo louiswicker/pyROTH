@@ -35,6 +35,9 @@ import datetime as DT
 from numpy import ma
 from dart_tools import *
 
+import warnings
+warnings.filterwarnings("ignore")
+
 # missing value
 _missing = -9999.
 _plot_counties = True
@@ -46,6 +49,8 @@ _vr_scale  = (-40.,40.)
 # Colortables
 _ref_ctable = cm.NWSRef
 _vr_ctable  = cm.Carbone42
+
+_plot_format = 'png'
 
 ##########################################################################################
 # Parameter dict for reflectivity masking
@@ -183,9 +188,9 @@ def plot_shapefiles(map, shapefiles=None, color='k', linewidth=0.5, counties=Fal
             
 ########################################################################
 #
-# Create two panel plot of processed, gridded velocity and reflectivity data  
+# Create processed reflectivity data  
 
-def grid_plot(ref, sweep, fsuffix=None, shapefiles=None, interactive=True):
+def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False):
   
 # Set up colormaps 
 
@@ -205,11 +210,11 @@ def grid_plot(ref, sweep, fsuffix=None, shapefiles=None, interactive=True):
   
 # Create png file label
 
-  if fsuffix == None:
+  if plot_filename == None:
       print("\n pyROTH.grid_plot:  No output file name is given, writing to %s" % "RF_...png")
-      filename = "RF_%2.2d_plot.png" % (sweep)
+      filename = "RF_%2.2d_plot.%s" % (sweep, _plot_format)
   else:
-       filename = "RF_%2.2d_%s.png" % (sweep, fsuffix.split("/")[1])
+       filename = "%s.%s" % (plot_filename, _plot_format)
 
   fig, ax1 = plt.subplots(figsize=(14,10))
   
@@ -328,6 +333,7 @@ def main(argv=None):
    else:
        sweep_num = options.plot
        plot_grid = True
+       plot_filename = None
 
    if options.realtime != None:
        year = int(options.realtime[0:4])
@@ -416,7 +422,10 @@ def main(argv=None):
       ref_obj = dbz_masking(ref_obj, thin_zeros=_grid_dict['thin_zeros'])
       
       if plot_grid:
-          grid_plot(ref_obj, sweep_num)
+          fsuffix = "MRMS_%s_%2.0f_KM" % (time.strftime('%Y%m%d%H%M'), msl[sweep_num]/100.)
+          plot_filename = os.path.join(options.out_dir, fsuffix)
+          print plot_filename
+          grid_plot(ref_obj, sweep_num, plot_filename = plot_filename)
     
       if options.write == True:      
           ret = write_DART_ascii(ref_obj, filename=out_filename, levels=_grid_dict['levels'],
