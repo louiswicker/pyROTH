@@ -106,8 +106,16 @@ def create_MRMS_grid(day=None):
     radar_csh_file = os.path.join(_NEWSe_grid_info, ("radars.%s.csh" % day))
 
 # Parse center lat and lon out of the c-shell radar file - HARDCODED!
+# If the file does not exist, then we exit out of this run
 
-    fhandle    = open(radar_csh_file)
+    try:
+        fhandle = open(radar_csh_file)
+    except:
+        print("\n============================================================================")
+        print("\n CANNOT OPEN radar CSH file, exiting MRMS processing:  %s" % radar_csh_file)
+        print("\n============================================================================")
+        sys.exit(1)
+
     all_lines  = fhandle.readlines()
     lat = float(all_lines[7].split(" ")[2])
     lon = float(all_lines[8].split(" ")[2])
