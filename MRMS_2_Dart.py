@@ -9,6 +9,7 @@ import subprocess
 _MRMS_top_dir            = "/work/john.krause/realtime"
 _MRMS_bin                = "/work/john.krause/bin"
 _NEWSe_top_dir           = "/work/wicker/REALTIME/"
+_NEWSe_grid_info         = "/scratch/wof/realtime/radar_files"
 #
 #-------------------------------------------------------------------------------
 #
@@ -102,7 +103,7 @@ def create_MRMS_grid(day=None):
     if day == None:
         day = time.strftime("%Y%m%d")
 
-    radar_csh_file = os.path.join(_NEWSe_top_dir, ("radars.%s.csh" % day))
+    radar_csh_file = os.path.join(_NEWSe_grid_info, ("radars.%s.csh" % day))
 
 # Parse center lat and lon out of the c-shell radar file - HARDCODED!
 
