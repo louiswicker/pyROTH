@@ -138,7 +138,7 @@ CENTER_LON %10.6f
 LAT_SPACING_DEG 0.05
 LON_SPACING_DEG 0.05
 #
-#west_east
+#west_east 
 NUM_X 150
 #North-South
 NUM_Y 150
@@ -152,7 +152,7 @@ RADAR_INFO_FILE /work/john.krause/realtime/radarinfo.dat
 INPUT_MSG_DIR /work/john.krause/realtime/grid/msg
 OUTPUT_DIR /work/john.krause/realtime/grid/output
 #
-XY_RADIUS_METERS 5000.0
+XY_RADIUS_METERS 3000.0
 Z_RADIUS_METERS 2000.0""" % (lat, lon)
 
     f = open(_MRMS_grid_config_file, "w")

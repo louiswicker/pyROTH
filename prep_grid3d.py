@@ -43,10 +43,12 @@ _missing = -9999.
 _plot_counties = True
 
 # Colorscale information
-_ref_scale = np.arange(5,85.,5.0)
-#_ref_scale = np.array((0.0, 10., 20., 35., 50., 65., 75., 85.))
+
+_ref_scale  = np.arange(5,85.,5.0)
+_ref_ctable = cm.NWSRef
+
+# radarscope?
 #_ref_scale = np.array((-10., 0.0, 10. 22.5, 32.5, 37.5, 42.5, 50.,60.,70.,75.,80.,85.))
-print _ref_scale
 #color: -15 0 0 0
 #color: 5 29 37 60
 #color: 17.5 89 155 171
@@ -61,7 +63,7 @@ print _ref_scale
 #color: 80 173 99 64
 #color: 85 105 0 4
 #color: 95 0 0 0
-
+# NWS
 #color: -30 165 165 165 8 230 230
 #color: 10 0 165 255 0 8 197
 #color: 20 16 255 8 10 126 3
@@ -72,11 +74,7 @@ print _ref_scale
 #color: 85 184 184 184
 #color: 95 184 184 184
 
-_vr_scale  = (-40.,40.)
-
 # Colortables
-_ref_ctable = cm.NWSRef
-_vr_ctable  = cm.Carbone42
 
 _plot_format = 'png'
 
@@ -378,9 +376,15 @@ def main(argv=None):
            if (f_time > a_time - DT.timedelta(minutes = 1)) and (f_time <= a_time + DT.timedelta(minutes = 6)):
                 last_file    = in_filenames[n]
 
-       in_filenames = [last_file]
-       print("\n prep_grid3d:  RealTime FLAG is true, only processing %s\n" % (in_filenames[:]))
-       rlt_filename = "%s_%s" % ("obs_seq_RF", a_time.strftime("%Y%m%d%H%M"))
+       try:
+           in_filenames = [last_file]
+           print("\n prep_grid3d:  RealTime FLAG is true, only processing %s\n" % (in_filenames[:]))
+           rlt_filename = "%s_%s" % ("obs_seq_RF", a_time.strftime("%Y%m%d%H%M"))
+       except:
+           print("\n============================================================================")
+           print("\n Prep_Grid3D cannot find a RF file between [-1,+6] min of %s, exiting" % a_time.strftime("%Y%m%d%H%M"))
+           print("\n============================================================================")
+           sys.exit(1)
 
    else:
        in_filenames = get_dir_files(options.dir, options.grep, Quiet=False)
