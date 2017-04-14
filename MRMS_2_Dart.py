@@ -135,25 +135,29 @@ def create_MRMS_grid(day=None):
 CENTER_LAT %10.6f
 CENTER_LON %10.6f
 #
-LAT_SPACING_DEG 0.05
-LON_SPACING_DEG 0.05
+LAT_SPACING_DEG 0.0500
+LON_SPACING_DEG 0.0525
 #
 #west_east 
-NUM_X 150
+NUM_X 180
 #North-South
-NUM_Y 150
+NUM_Y 180
 #up down
 NUM_Z 20
 #
-#
 Z_RES_METERS 500.0
+#
+TIME_CUTOFF_SECONDS 450
+MAX_NUM_RADARS_PER_GRIDPOINT 3
+MAX_RADAR_DISTANCE_KM 200.0
+#
 #
 RADAR_INFO_FILE /work/john.krause/realtime/radarinfo.dat
 INPUT_MSG_DIR /work/john.krause/realtime/grid/msg
 OUTPUT_DIR /work/john.krause/realtime/grid/output
 #
-XY_RADIUS_METERS 3000.0
-Z_RADIUS_METERS 2000.0""" % (lat, lon)
+XY_RADIUS_METERS 2000.0
+Z_RADIUS_METERS  1500.0""" % (lat, lon)
 
     f = open(_MRMS_grid_config_file, "w")
     f.write(file_txt)
@@ -188,6 +192,9 @@ def run_Prep_Grid3d(today):
     cmd = "prep_grid3d.py -d %s -w -o %s --realtime %s -p 4" % (_MRMS_input_dir, obs_seq_out_dir, str_time)
 
     print("\n Prep_Grid3d running job: at %s" % (time.strftime("%Y-%m-%d %H:%M:%S")))
+    print("\n %s" % cmd)
+    print("\n %s" % gmt)
+    print("\n %s" % str_time)
 
     os.system("%s >> %s" % (cmd, _NEWSe_log_files[0]))
 

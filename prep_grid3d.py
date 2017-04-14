@@ -274,12 +274,18 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
   bgmap.drawparallels(range(10,80,1),    labels=[1,0,0,0], linewidth=0.5, ax=ax1)
   bgmap.drawmeridians(range(-170,-10,1), labels=[0,0,0,1], linewidth=0.5, ax=ax1)
 
-  im1 = bgmap.pcolormesh(xe, ye, ref.data[sweep], cmap=cmapr, norm=normr, vmin = _ref_scale.min(), vmax = _ref_scale.max(), ax=ax1)
+  if sweep == -1:
+      ref_data = ref.data.max(axis=0)
+  else:
+      ref_data = ref.data[sweep]
+
+# im1 = bgmap.pcolormesh(xe, ye, ref_data, cmap=cmapr, norm=normr, vmin = _ref_scale.min(), vmax = _ref_scale.max(), ax=ax1)
+  im1 = bgmap.pcolormesh(xe, ye, ref_data, cmap=cmapr, norm=normr, vmin = 20., vmax = _ref_scale.max(), ax=ax1)
   cbar = bgmap.colorbar(im1,location='right')
   cbar.set_label('Reflectivity (dBZ)')
   ax1.set_title('Thresholded Reflectivity (Gridded)')
   
-  at = AnchoredText("Max dBZ: %4.1f" % (ref.data[sweep].max()), loc=4, prop=dict(size=12), frameon=True,)
+  at = AnchoredText("Max dBZ: %4.1f" % (ref_data.max()), loc=4, prop=dict(size=12), frameon=True,)
   at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
   ax1.add_artist(at)
 
@@ -295,16 +301,20 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
       bgmap.scatter(xg_2d[r_mask], yg_2d[r_mask], s=25, facecolors='none', \
                     edgecolors='k', alpha=1.0, ax=ax1) 
   except AttributeError:
-      r_mask = (ref.data.data[sweep] < 1.0) & (ref.data.mask[sweep] == False)
+      print "Attribute error"
+      r_mask = (ref.data.data[4] < 1.0) & (ref.data.mask[4] == False)
       print("%d" % np.sum(r_mask) )
       bgmap.scatter(xg_2d[r_mask], yg_2d[r_mask], s=25, facecolors='none', \
                     edgecolors='k', alpha=1.0, ax=ax1)
   
 # Get other metadata....for labeling
 
-#   time_start = ncdf.num2date(ref.time['data'][0], ref.time['units'])
   time_text = ref.time.strftime('%Y-%m-%d %H:%M')
-  title = '\nDate:  %s   Time:  %s Z   Height:  %4.1f km' % (time_text[0:10], time_text[10:19], 0.001*ref.zg[sweep])
+
+  if sweep == -1:
+      title = '\nDate:  %s   Time:  %s Composite' % (time_text[0:10], time_text[10:19])
+  else:
+      title = '\nDate:  %s   Time:  %s Z   Height:  %4.1f km' % (time_text[0:10], time_text[10:19], 0.001*ref.zg[sweep])
   plt.suptitle(title, fontsize=24)
   
   plt.savefig(filename)
@@ -373,7 +383,7 @@ def main(argv=None):
 
        for n, file in enumerate(in_filenames):
            f_time = DT.datetime.strptime(os.path.basename(file)[-18:-3], "%Y%m%d-%H%M%S")
-           if (f_time > a_time - DT.timedelta(minutes = 1)) and (f_time <= a_time + DT.timedelta(minutes = 6)):
+           if (f_time > a_time - DT.timedelta(minutes = 4)) and (f_time <= a_time + DT.timedelta(minutes = 5)):
                 last_file    = in_filenames[n]
 
        try:
@@ -382,7 +392,7 @@ def main(argv=None):
            rlt_filename = "%s_%s" % ("obs_seq_RF", a_time.strftime("%Y%m%d%H%M"))
        except:
            print("\n============================================================================")
-           print("\n Prep_Grid3D cannot find a RF file between [-1,+6] min of %s, exiting" % a_time.strftime("%Y%m%d%H%M"))
+           print("\n Prep_Grid3D cannot find a RF file between [-4,+5] min of %s, exiting" % a_time.strftime("%Y%m%d%H%M"))
            print("\n============================================================================")
            sys.exit(1)
 
@@ -448,10 +458,12 @@ def main(argv=None):
       ref_obj = dbz_masking(ref_obj, thin_zeros=_grid_dict['thin_zeros'])
       
       if plot_grid:
-          fsuffix = "MRMS_%s_%2.0f_KM" % (time.strftime('%Y%m%d%H%M'), msl[sweep_num]/100.)
+          fsuffix = "MRMS_%s_%2.2d_KM" % (time.strftime('%Y%m%d%H%M'), int(msl[sweep_num]/100.))
           plot_filename = os.path.join(options.out_dir, fsuffix)
-          print plot_filename
           grid_plot(ref_obj, sweep_num, plot_filename = plot_filename)
+          fsuffix = "MRMS_%s_Composite" % (time.strftime('%Y%m%d%H%M'))
+          plot_filename = os.path.join(options.out_dir, fsuffix)
+          grid_plot(ref_obj, -1, plot_filename = plot_filename)
     
       if options.write == True:      
           ret = write_DART_ascii(ref_obj, filename=out_filename, levels=_grid_dict['levels'],
