@@ -8,9 +8,9 @@ _MRMS_obs_seq         = "./"
 
 year       = 2017
 mon        = 04
-day        = [14, 14]
-hour       = [20, 20]
-min        = [20,  45]
+day        = [16, 16]
+hour       = [19, 19]
+min        = [30, 30]
 
 plot_level = 4
 

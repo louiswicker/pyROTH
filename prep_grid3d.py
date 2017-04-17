@@ -44,8 +44,9 @@ _plot_counties = True
 
 # Colorscale information
 
-_ref_scale  = np.arange(5,85.,5.0)
+_ref_scale  = np.arange(5.,85.,5.0)
 _ref_ctable = cm.NWSRef
+_ref_min_plot = 20.
 
 # radarscope?
 #_ref_scale = np.array((-10., 0.0, 10. 22.5, 32.5, 37.5, 42.5, 50.,60.,70.,75.,80.,85.))
@@ -236,7 +237,7 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
   else:
        filename = "%s.%s" % (plot_filename, _plot_format)
 
-  fig, ax1 = plt.subplots(figsize=(14,10))
+  fig, axes = plt.subplots(1, 2, sharey=True, figsize=(15,10))
   
 # Set up coordinates for the plots
 
@@ -246,7 +247,7 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
   ne_lat = ref.lats.max()
 
   bgmap = Basemap(projection='lcc', llcrnrlon=sw_lon,llcrnrlat=sw_lat,urcrnrlon=ne_lon,urcrnrlat=ne_lat, \
-              lat_0=0.5*(ne_lat+sw_lat), lon_0=0.5*(ne_lon+sw_lon), resolution='c', ax=ax1)
+                  lat_0=0.5*(ne_lat+sw_lat), lon_0=0.5*(ne_lon+sw_lon), resolution='c', ax=axes[0])
                   
   xg, yg = bgmap(ref.lons, ref.lats)
     
@@ -267,27 +268,50 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
 # REFLECTVITY PLOT
 
   if shapefiles:
-      plot_shapefiles(bgmap, shapefiles=shapefiles, counties=_plot_counties, ax=ax1)
+      plot_shapefiles(bgmap, shapefiles=shapefiles, counties=_plot_counties, ax=axes[0])
   else:
-      plot_shapefiles(bgmap, counties=_plot_counties, ax=ax1)
+      plot_shapefiles(bgmap, counties=_plot_counties, ax=axes[0])
  
-  bgmap.drawparallels(range(10,80,1),    labels=[1,0,0,0], linewidth=0.5, ax=ax1)
-  bgmap.drawmeridians(range(-170,-10,1), labels=[0,0,0,1], linewidth=0.5, ax=ax1)
+  bgmap.drawparallels(range(10,80,1),    labels=[1,0,0,0], linewidth=0.5, ax=axes[0])
+  bgmap.drawmeridians(range(-170,-10,1), labels=[0,0,0,1], linewidth=0.5, ax=axes[0])
 
   if sweep == -1:
       ref_data = ref.data.max(axis=0)
   else:
       ref_data = ref.data[sweep]
 
-# im1 = bgmap.pcolormesh(xe, ye, ref_data, cmap=cmapr, norm=normr, vmin = _ref_scale.min(), vmax = _ref_scale.max(), ax=ax1)
-  im1 = bgmap.pcolormesh(xe, ye, ref_data, cmap=cmapr, norm=normr, vmin = 20., vmax = _ref_scale.max(), ax=ax1)
+# pixelated plot
+
+  im1  = bgmap.pcolormesh(xe, ye, ref_data, cmap=cmapr, norm=normr, vmin = _ref_min_plot, vmax = _ref_scale.max(), ax=axes[0])
   cbar = bgmap.colorbar(im1,location='right')
   cbar.set_label('Reflectivity (dBZ)')
-  ax1.set_title('Thresholded Reflectivity (Gridded)')
-  
-  at = AnchoredText("Max dBZ: %4.1f" % (ref_data.max()), loc=4, prop=dict(size=12), frameon=True,)
+  axes[0].set_title('Pixel Reflectivity (Gridded)')
+  at = AnchoredText("Max dBZ: %4.1f" % (ref_data.max()), loc=4, prop=dict(size=10), frameon=True,)
   at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
-  ax1.add_artist(at)
+  axes[0].add_artist(at)
+
+# Contour filled plot
+
+  bgmap = Basemap(projection='lcc', llcrnrlon=sw_lon,llcrnrlat=sw_lat,urcrnrlon=ne_lon,urcrnrlat=ne_lat, \
+                  lat_0=0.5*(ne_lat+sw_lat), lon_0=0.5*(ne_lon+sw_lon), resolution='c', ax=axes[1])
+
+  if shapefiles:
+      plot_shapefiles(bgmap, shapefiles=shapefiles, counties=_plot_counties, ax=axes[1])
+  else:
+      plot_shapefiles(bgmap, counties=_plot_counties, ax=axes[1])
+ 
+  bgmap.drawparallels(range(10,80,1),    labels=[1,0,0,0], linewidth=0.5, ax=axes[1])
+  bgmap.drawmeridians(range(-170,-10,1), labels=[0,0,0,1], linewidth=0.5, ax=axes[1])
+                  
+  im1 = bgmap.contourf(xg_2d, yg_2d, ref_data, levels= _ref_scale, cmap=cmapr, norm=normr, \
+                       vmin = _ref_min_plot, vmax = _ref_scale.max(), ax=axes[1])
+
+  cbar = bgmap.colorbar(im1,location='right')
+  cbar.set_label('Reflectivity (dBZ)')
+  axes[1].set_title('Contoured Reflectivity (Gridded)')
+  at = AnchoredText("Max dBZ: %4.1f" % (ref_data.max()), loc=4, prop=dict(size=10), frameon=True,)
+  at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
+  axes[1].add_artist(at)
 
 # Plot missing values as points.
 #   r_mask = (ref.data.mask[sweep] == True)
@@ -299,14 +323,14 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
       r_mask = (ref.zero_dbz.mask == False)
       print("%d" % np.sum(r_mask) )
       bgmap.scatter(xg_2d[r_mask], yg_2d[r_mask], s=25, facecolors='none', \
-                    edgecolors='k', alpha=1.0, ax=ax1) 
+                    edgecolors='k', alpha=1.0, ax=axes[0]) 
   except AttributeError:
       print "Attribute error"
       r_mask = (ref.data.data[4] < 1.0) & (ref.data.mask[4] == False)
       print("%d" % np.sum(r_mask) )
       bgmap.scatter(xg_2d[r_mask], yg_2d[r_mask], s=25, facecolors='none', \
-                    edgecolors='k', alpha=1.0, ax=ax1)
-  
+                    edgecolors='k', alpha=1.0, ax=axes[0])
+
 # Get other metadata....for labeling
 
   time_text = ref.time.strftime('%Y-%m-%d %H:%M')

@@ -8,6 +8,7 @@ import subprocess
 
 _MRMS_top_dir            = "/work/john.krause/realtime"
 _MRMS_bin                = "/work/john.krause/bin"
+_NEWSe_bin               = "/work/wicker/REALTIME/pyroth"
 _NEWSe_top_dir           = "/work/wicker/REALTIME/"
 _NEWSe_grid_info         = "/scratch/wof/realtime/radar_files"
 #
@@ -17,8 +18,8 @@ _MRMS_input_dir          = os.path.join(_MRMS_top_dir, "grid/output")
 _MRMS_obs_seq_dir        = os.path.join(_MRMS_top_dir, "")
 _MRMS_grid_config_file   = os.path.join(_MRMS_top_dir, "grid_config.txt")
 _MRMS_radar_config_file  = os.path.join(_MRMS_top_dir, "radarinfo.dat")
-_MRMS_Grid_Setup_exe     = [os.path.join(_MRMS_bin, "Radar3DGrid_Driver"), "-q", "-c", _MRMS_grid_config_file]
 _MRMS_Init_Docker_exe    = [os.path.join(_MRMS_bin, "initRadar3DGrid.pl"), "-v", "-d", _MRMS_top_dir, "-r"]
+_MRMS_Grid_Setup_exe     = [os.path.join(_MRMS_bin, "Radar3DGrid_Driver"), "-q", "-c", _MRMS_grid_config_file]
 _MRMS_Grid_Driver_exe    = [os.path.join(_MRMS_bin, "Radar3DGrid_Driver.cmd")]
 _MRMS_Grid_MsgMaker_exe  = [os.path.join(_MRMS_bin, "Radar3DGrid_MsgMaker.cmd")]
 _MRMS_Kill_All_exe       = [os.path.join(_MRMS_bin, "initRadar3DGrid"), "-s"]
@@ -31,7 +32,7 @@ _MRMS_log_files          = [os.path.join(_MRMS_top_dir, "log_Docker.txt"), \
 _NEWSe_grid_prep_exe     = [os.path.join(_NEWSe_top_dir, "pyroth/prep_grid3d.py")]
 _NEWSe_log_files         = [os.path.join(_NEWSe_top_dir, "log_grid_prep.txt")]
 
-debug = False
+debug = True
 
 #-------------------------------------------------------------------------------
 # Utility to round the datetime object to nearest 15 min....
@@ -47,15 +48,18 @@ def run_MRMS_Programs(Init_Dockers):
     print("\n MRMS_programs will now start the executables need for radar REF processing")
 
     print("\n Starting docker programs ")
-    print Init_Dockers
     with open(_MRMS_log_files[0], 'w') as fp0:
         p = subprocess.Popen(Init_Dockers, stdout=fp0)
 
     print("\n Starting Grid_Driver program")
+    os.system("cp %s %s" % ("./Radar3DGrid_Driver.cmd", _MRMS_Grid_Driver_exe[0]))
+    os.chmod(_MRMS_Grid_Driver_exe[0],0775)
     with open(_MRMS_log_files[1], 'w') as fp1:
         p = subprocess.Popen(_MRMS_Grid_Driver_exe, stdout=fp1, shell=True)
 
     print("\n Starting MsgMaker program")
+    os.system("cp %s %s" % ("./Radar3DGrid_MsgMaker.cmd", _MRMS_Grid_MsgMaker_exe[0]))
+    os.chmod(_MRMS_Grid_MsgMaker_exe[0],0775)
     with open(_MRMS_log_files[2], 'w') as fp2:
         p = subprocess.Popen(_MRMS_Grid_MsgMaker_exe, stdout=fp2, shell=True)
 
@@ -71,6 +75,7 @@ def run_MRMS_Setup():
 
     p = subprocess.Popen(_MRMS_Grid_Setup_exe, stdout=subprocess.PIPE)
     file_txt = p.communicate()[0]
+    print file_txt
 
     if debug:
         f = open("Grid_Setup_DEBUG.txt", "w")
@@ -80,6 +85,7 @@ def run_MRMS_Setup():
 # Write out the radars file
 
     txt = file_txt.split('\n')
+    print txt
     start = txt.index("Recommeded radarinfo file:") + 1
     end   = len(txt) - 1 #blank line in output
 
@@ -87,6 +93,7 @@ def run_MRMS_Setup():
     radars = ""
     f = open(_MRMS_radar_config_file,"w")
     for item in txt[start:end]:
+        print item
         f.write("%s\n" % item)
         radars = ("%s%s," % (radars, item[0:4]))
     f.close()
