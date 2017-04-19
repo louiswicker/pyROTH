@@ -39,23 +39,53 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # missing value
-_missing       = -9999.
+_missing = -9999.
 _plot_counties = True
 
 # Colorscale information
 
-_ref_scale    = np.arange(5.,85.,5.0)
-_ref_ctable   = cm.NWSRef
+_ref_scale  = np.arange(5.,85.,5.0)
+_ref_ctable = cm.NWSRef
 _ref_min_plot = 20.
 
-_plot_format  = 'png'
+variable = "MergedReflectivityQC"
+buffer_len = 500
+
+# radarscope?
+#_ref_scale = np.array((-10., 0.0, 10. 22.5, 32.5, 37.5, 42.5, 50.,60.,70.,75.,80.,85.))
+#color: -15 0 0 0
+#color: 5 29 37 60
+#color: 17.5 89 155 171
+#color: 22.5  33 186 72
+#color: 32.5 5 101 1
+#color: 37.5 251 252 0 199 176 0
+#color: 42.5 253 149 2 172 92 2
+#color: 50 253 38 0 135 43 22
+#color: 60 193 148 179 200 23 119
+#color: 70 165 2 215 64 0 146
+#color: 75 135 255 253 54 120 142
+#color: 80 173 99 64
+#color: 85 105 0 4
+#color: 95 0 0 0
+# NWS
+#color: -30 165 165 165 8 230 230
+#color: 10 0 165 255 0 8 197
+#color: 20 16 255 8 10 126 3
+#color: 35 251 238 0 210 112 2
+#color: 50 255 0 0 171 0 1
+#color: 65 247 1 249 136 63 174
+#color: 75 255 255 255 184 184 184
+#color: 85 184 184 184
+#color: 95 184 184 184
+
+# Colortables
+
+_plot_format = 'png'
 
 ##########################################################################################
 # Parameter dict for reflectivity masking
-
 _grid_dict = {
               'zero_dbz_obtype' : True,
-              'thin_grid'       : 1,
               'thin_zeros'      : 3,
               'halo_footprint'  : 4,
               'max_height'      : 10000.,
@@ -102,19 +132,6 @@ def get_dir_files(dir, pattern, Quiet=False):
         print("\n Last  file is %s\n" % (os.path.basename(filenames[-1])))
 
     return filenames
-
-#=========================================================================================
-def compute_window_mean(image, window_w, window_h):
-
-    w, h = image.shape
-    strided_image = np.lib.stride_tricks.as_strided(image, 
-                                                    shape=[w - window_w + 1, h - window_h + 1, window_w, window_h],
-                                                    strides=image.strides + image.strides)
-    # important: trying to reshape image will create complete 4-dimensional compy
-    means = strided_image.mean(axis=(2,3)) 
-    maximums = strided_image.max(axis=(2,3))
-    
-    return means, maximums
 
 #=========================================================================================
 # DBZ Mask
@@ -235,11 +252,20 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
   sw_lat = ref.lats.min()
   ne_lat = ref.lats.max()
 
+  sw_lat = 36.5
+  ne_lat = 45.5
+  sw_lon = -99.5
+  ne_lon = -91.0
+
   bgmap = Basemap(projection='lcc', llcrnrlon=sw_lon,llcrnrlat=sw_lat,urcrnrlon=ne_lon,urcrnrlat=ne_lat, \
                   lat_0=0.5*(ne_lat+sw_lat), lon_0=0.5*(ne_lon+sw_lon), resolution='c', ax=axes[0])
+
+  print ref.lons.shape, ref.lats.shape
                   
-  xg, yg = bgmap(ref.lons, ref.lats)
+  xg, yg = bgmap(ref.lons[:buffer_len], ref.lats)
     
+  print xg.shape, yg.shape
+
   yg_2d, xg_2d = np.meshgrid(yg, xg)
   
   yg_2d = yg_2d.transpose()
@@ -264,10 +290,8 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
   bgmap.drawparallels(range(10,80,1),    labels=[1,0,0,0], linewidth=0.5, ax=axes[0])
   bgmap.drawmeridians(range(-170,-10,1), labels=[0,0,0,1], linewidth=0.5, ax=axes[0])
 
-  if sweep == -1:
-      ref_data = ref.data.max(axis=0)
-  else:
-      ref_data = ref.data[sweep]
+  ref_data = ref.data[:,:buffer_len]
+  print ref_data.shape, type(ref_data)
 
 # pixelated plot
 
@@ -324,10 +348,7 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
 
   time_text = ref.time.strftime('%Y-%m-%d %H:%M')
 
-  if sweep == -1:
-      title = '\nDate:  %s   Time:  %s Composite' % (time_text[0:10], time_text[10:19])
-  else:
-      title = '\nDate:  %s   Time:  %s Z   Height:  %4.1f km' % (time_text[0:10], time_text[10:19], 0.001*ref.zg[sweep])
+  title = '\nDate:  %s   Time:  %s Z   Height:  %4.1f km' % (time_text[0:10], time_text[10:19], 0.001*ref.zg[0])
   plt.suptitle(title, fontsize=24)
   
   plt.savefig(filename)
@@ -343,163 +364,68 @@ def main(argv=None):
 # Command line interface 
 #
    parser = OptionParser()
-   parser.add_option("-d", "--dir",   dest="dir",    default=None,  type="string", help = "Directory where MRMS files are")
-   
-   parser.add_option(      "--realtime",  dest="realtime",   default=None,  \
-               help = "Boolean flag to uses this YYYYMMDDHHMM time stamp for the realtime processing")
- 
-   parser.add_option("-g", "--grep",  dest="grep",   default="*.nc", type="string", help = "Pattern grep, [*.nc, *VR.h5]")
-   
-   parser.add_option("-w", "--write", dest="write",   default=False, \
-                           help = "Boolean flag to write DART ascii file", action="store_true")
-                           
-   parser.add_option("-o", "--out",      dest="out_dir",  default="ref_files",  type="string", \
-                           help = "Directory to place output files in")
-                           
-   parser.add_option("-p", "--plot",      dest="plot",      default=-1,  type="int",      \
-                     help = "Specify a number between 0 and 20 to plot reflectivity")
-                  
-   parser.add_option(      "--thin",      dest="thin",      default=1,  type="int",      \
-                     help = "Specify a number between 2 and 5 thin reflectivity")
+
+   parser.add_option("-f", "--file",  dest="file", default=None,  type="string",
+                     help = "filename")
                   
    (options, args) = parser.parse_args()
 
 #-------------------------------------------------------------------------------
 
-   if options.dir == None:
+   if options.file == None:
           
       print "\n\n ***** USER MUST SPECIFY A DIRECTORY WHERE FILES ARE *****"
       print "\n                         EXITING!\n\n"
       parser.print_help()
       print
       sys.exit(1)
-
-   if options.thin > 1:
-       _grid_dict['thin_grid'] = options.thin
       
-   if options.plot < 0:
-       plot_grid = False
-   else:
-       sweep_num = options.plot
-       plot_grid = True
-       plot_filename = None
-
-   if options.realtime != None:
-       year = int(options.realtime[0:4])
-       mon  = int(options.realtime[4:6])
-       day  = int(options.realtime[6:8])
-       hour = int(options.realtime[8:10])
-       minute = int(options.realtime[10:12])
-       a_time = DT.datetime(year, mon, day, hour, minute, 0)
-
 #-------------------------------------------------------------------------------
-
-# if realtime, now find the file created within T+5 of analysis
-
-   if options.realtime != None:
-
-       in_filenames = get_dir_files(options.dir, options.grep, Quiet=True)
-
-       for n, file in enumerate(in_filenames):
-           f_time = DT.datetime.strptime(os.path.basename(file)[-18:-3], "%Y%m%d-%H%M%S")
-           if (f_time > a_time - DT.timedelta(minutes = 4)) and (f_time <= a_time + DT.timedelta(minutes = 5)):
-                last_file    = in_filenames[n]
-
-       try:
-           in_filenames = [last_file]
-           print("\n prep_grid3d:  RealTime FLAG is true, only processing %s\n" % (in_filenames[:]))
-           rlt_filename = "%s_%s" % ("obs_seq_RF", a_time.strftime("%Y%m%d%H%M"))
-       except:
-           print("\n============================================================================")
-           print("\n Prep_Grid3D cannot find a RF file between [-4,+5] min of %s, exiting" % a_time.strftime("%Y%m%d%H%M"))
-           print("\n============================================================================")
-           sys.exit(1)
-
-   else:
-       in_filenames = get_dir_files(options.dir, options.grep, Quiet=False)
-       out_filenames = []
-       print("\n prep_grid3d:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dir))
-       print("\n prep_grid3d:  First file is %s\n" % (in_filenames[0]))
-       print("\n prep_grid3d:  Last  file is %s\n" % (in_filenames[-1]))
-   
- # Make sure there is a directory to write files into....
- 
-   if not os.path.exists(options.out_dir):
-       try:
-           os.mkdir(options.out_dir)
-       except:
-           print("\n**********************   FATAL ERROR!!  ************************************")
-           print("\n PREP_GRID3D:  Cannot create output dir:  %s\n" % options.out_dir)
-           print("\n**********************   FATAL ERROR!!  ************************************")
+   in_filenames = [options.file]
 
    for n, file in enumerate(in_filenames):
    
       print ' ================================================================================'
+      print file
 
-      if options.realtime != None:
-          out_filename = os.path.join(options.out_dir, rlt_filename)
-          time         = a_time
-	  print(" Out filename:  %s\n" % out_filename)
-      else:
-          print options.realtime == None
-          str_time     = "%s_%s" % (os.path.basename(file)[-18:-10], os.path.basename(file)[-9:-3])
-          prefix       = "obs_seq_RF_%s" % str_time
-          out_filename = os.path.join(options.out_dir, prefix)
-          time         = DT.datetime.strptime(file[-18:-3], "%Y%m%d-%H%M%S")
-          print(" Out filename:  %s\n" % out_filename)
-   
       f       = ncdf.Dataset(file, "r")
       missing = f.MissingData
       nlon    = len(f.dimensions['Lon'])
       nlat    = len(f.dimensions['Lat'])
-      nlvl    = len(f.dimensions['Ht'])
-      ref     = ma.MaskedArray(f.variables['ReflectivityQC'][...], mask = (f.variables['ReflectivityQC'][...] < missing+1.))
+      nlvl    = 1
+      ref     = ma.MaskedArray(f.variables[variable][0], \
+                       mask = (f.variables[variable][0] < missing+1.))
       lons    = f.variables['Lon'][...]
       lats    = f.variables['Lat'][...]
-      msl     = f.variables['Height'][...]
+      msl     = 0.0
       height0 = f.Height
-      dtime   = (time - DT.datetime(1970, 1, 1, 0, 0)).total_seconds
+      dtime    = f.variables['time'][0]
+#     dtime   = (time - DT.datetime(1970, 1, 1, 0, 0)).total_seconds
+      time    = DT.datetime.fromtimestamp(dtime)
 
       f.close()
    
       print(" Time of file:  %s\n" % time.strftime('%Y-%m-%d %H:%M:%S') )
-
-      if _grid_dict['thin_grid'] > 1: 
-          thin      = _grid_dict['thin_grid']
-#         ref_thin  = 0.25*(ref[:,::thin,::thin]+ref[:,1::thin,::thin]+ref[:,::thin,1::thin]+ref[:,1::thin,1::thin])
-          ref_thin  = ref[:,::thin,::thin]
-          lats_thin = lats[::thin]
-          lons_thin = lons[::thin]
-          ref_obj = Gridded_Field(file, data = ref_thin, field = "REFLECTIVITY", zg = msl, \
-                                  lats = lats_thin, lons = lons_thin, radar_hgt = height0, time = time ) 
-      else:
-          ref_obj = Gridded_Field(file, data = ref,      field = "REFLECTIVITY", zg = msl, \
-                                  lats = lats, lons = lons, radar_hgt = height0, time = time ) 
-
+             
+      ref_obj = Gridded_Field(file, data = ref, field = "REFLECTIVITY", zg = [height0], \
+                                    lats = lats, lons = lons, radar_hgt = height0, time = time ) 
 #       ref_obj.data.field     = "REFLECTIVITY"
 #       ref_obj.data.zg        = msl
 #       ref_obj.data.lats      = lats
 #       ref_obj.data.lons      = lons
 #       ref_obj.data.radar_hgt = height0
-#       ref_obj.data.time      = {'data': np.array(dtime), 'units': "seconds since January 1, 1970"}
+# #       ref_obj.data.time      = {'data': np.array(dtime), 'units': "seconds since January 1, 1970"}
 #       ref_obj.data.time      = time
       
-      ref_obj = dbz_masking(ref_obj, thin_zeros=_grid_dict['thin_zeros'])
+#     ref_obj = dbz_masking(ref_obj, thin_zeros=_grid_dict['thin_zeros'])
       
-      if plot_grid:
-          fsuffix = "MRMS_%s_%2.2d_KM" % (time.strftime('%Y%m%d%H%M'), int(msl[sweep_num]/100.))
-          plot_filename = os.path.join(options.out_dir, fsuffix)
-          grid_plot(ref_obj, sweep_num, plot_filename = plot_filename)
-          fsuffix = "MRMS_%s_Composite" % (time.strftime('%Y%m%d%H%M'))
-          plot_filename = os.path.join(options.out_dir, fsuffix)
-          grid_plot(ref_obj, -1, plot_filename = plot_filename)
+#     fsuffix = "MRMS_%s_%2.2d_KM" % (time.strftime('%Y%m%d%H%M'), int(msl[sweep_num]/100.))
+#     plot_filename = os.path.join(options.out_dir, fsuffix)
+#     grid_plot(ref_obj, sweep_num, plot_filename = plot_filename)
+      fsuffix = "MRMS_%s_Composite" % (time.strftime('%Y%m%d%H%M'))
+      plot_filename = os.path.join("./", fsuffix)
+      grid_plot(ref_obj, -1, plot_filename = plot_filename)
     
-      if options.write == True:      
-          ret = write_DART_ascii(ref_obj, filename=out_filename, levels=_grid_dict['levels'],
-                                 obs_error=[_grid_dict['reflectivity'],_grid_dict['0reflectivity']], 
-                                 QC_info=_grid_dict['QC_info'])
-
-
 #-------------------------------------------------------------------------------
 # Main program for testing...
 #

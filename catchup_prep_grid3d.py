@@ -1,16 +1,20 @@
+#!/usr/bin/env python
+
+
 import time
 import logging
 import os, sys
 import datetime
 
 _MRMS_input_directory = "/work/john.krause/realtime/grid/output"
-_MRMS_obs_seq         = "./"
+_MRMS_obs_seq         = "/work/john.krause/realtime/"
 
 year       = 2017
 mon        = 04
-day        = [16, 16]
-hour       = [19, 19]
-min        = [30, 30]
+day        = [19, 19]
+hour       = [18, 20]
+min        = [0,  30]
+thin       = 1
 
 plot_level = 4
 
@@ -23,7 +27,9 @@ obs_seq_out_dir = os.path.join(_MRMS_obs_seq, start_time.strftime("%Y%m%d"))
 while start_time < stop_time:
 
     print("\n >>>>=======BEGIN===============================================================")
-    cmd = "prep_grid3d.py -d %s -w -o %s --realtime %s -p %d" % (_MRMS_input_directory, obs_seq_out_dir, start_time.strftime("%Y%m%d%H%M"), plot_level)
+    cmd = "prep_grid3d.py -d %s -w -o %s --realtime %s -p %d --thin %d" %  \
+          (_MRMS_input_directory, obs_seq_out_dir, start_time.strftime("%Y%m%d%H%M"), plot_level, thin)
+
     print("\n prep_grid called at %s" % (time.strftime("%Y-%m-%d %H:%M:%S")))
     print(" Cmd: %s" % (cmd))
     ret = os.system("%s >> log_prep_grid3d" % cmd)
