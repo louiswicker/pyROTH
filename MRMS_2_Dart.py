@@ -32,7 +32,7 @@ _MRMS_log_files          = [os.path.join(_MRMS_top_dir, "log_Docker.txt"), \
 _NEWSe_grid_prep_exe     = [os.path.join(_NEWSe_top_dir, "pyroth/prep_grid3d.py")]
 _NEWSe_log_files         = [os.path.join(_NEWSe_top_dir, "log_grid_prep.txt")]
 
-debug = True
+debug = False
 
 #-------------------------------------------------------------------------------
 # Utility to round the datetime object to nearest 15 min....

@@ -385,10 +385,10 @@ def main(argv=None):
        plot_filename = None
 
    if options.realtime != None:
-       year = int(options.realtime[0:4])
-       mon  = int(options.realtime[4:6])
-       day  = int(options.realtime[6:8])
-       hour = int(options.realtime[8:10])
+       year   = int(options.realtime[0:4])
+       mon    = int(options.realtime[4:6])
+       day    = int(options.realtime[6:8])
+       hour   = int(options.realtime[8:10])
        minute = int(options.realtime[10:12])
        a_time = DT.datetime(year, mon, day, hour, minute, 0)
 
