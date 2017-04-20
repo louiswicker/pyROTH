@@ -11,8 +11,8 @@ _MRMS_obs_seq         = "/work/john.krause/realtime/"
 
 year       = 2017
 mon        = 04
-day        = [19, 19]
-hour       = [18, 20]
+day        = [20, 20]
+hour       = [17, 19]
 min        = [0,  30]
 thin       = 1
 

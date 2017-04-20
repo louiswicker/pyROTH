@@ -71,7 +71,7 @@ _grid_dict = {
               'min_dbz_zeros'   : 15.0,
               'reflectivity'    : 5.0,
               '0reflectivity'   : 5.0, 
-              'levels'          : ['00.50','01.00','01.50','02.00','02.50','03.00','03.50', \
+              'levels'          : ['00.50','01.00','01.50','02.00','02.50','03.00', \
                                    '04.00','05.00','06.00','07.00','08.00','09.00','10.00'],
               'QC_info'         : [[15.,5.],[20.,1.]],
              }
@@ -178,8 +178,8 @@ def assemble_3D_grid(path, filename, loc=None, Quiet=False):
              j0, j1 = jc-NY/2, jc+NY/2
 
              if not Quiet:
-                 print("\n Lon indexes:  %d  %d" % (i0, i1))
-                 print("\n Lat indexes:  %d  %d" % (j0, j1))
+                 print("\n SW Lon:  %f  NE_Lon:  %f" % (f_lons[i0], f_lons[i1]))
+                 print("\n SW Lat:  %f  NE_Lat:  %f" % (f_lats[j0], f_lats[j1]))
                       
              g_lats    = f_lats[j0:j1]
              g_lons    = f_lons[i0:i1]
@@ -187,14 +187,14 @@ def assemble_3D_grid(path, filename, loc=None, Quiet=False):
              g_heights = np.zeros((nlvls,))
 
          g_heights[n] = f.Height    
-         array[n,...] = f.variables[_dbz_name][0,i0:i1,j0:j1]
+         array[n,...] = f.variables[_dbz_name][0,j0:j1,i0:i1]
          
          f.close()
   
     ref = ma.MaskedArray(array, mask = (array < missingData+1.))        
     
     return Gridded_Field(filename, data = ref, field = "REFLECTIVITY", zg = g_heights, \
-                         lats = g_lats, lons = g_lons, radar_hgt = 0.0, time = time, \
+                         lats = g_lats, lons = g_lons, radar_hgt = 0.0, local_time = time, \
                          missingData = missingData ) 
 
 #=========================================================================================
@@ -405,7 +405,10 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
 
   time_text = ref.time.strftime('%Y-%m-%d %H:%M')
 
-  title = '\nDate:  %s   Time:  %s Z   Height:  %4.1f km' % (time_text[0:10], time_text[10:19], 0.001*ref.zg[0])
+  if sweep == -1:
+      title = '\nDate:  %s   Time:  %s Composite' % (time_text[0:10], time_text[10:19])
+  else:
+      title = '\nDate:  %s   Time:  %s Z   Height:  %4.1f km' % (time_text[0:10], time_text[10:19], 0.001*ref.zg[sweep])
   plt.suptitle(title, fontsize=24)
   
   plt.savefig(filename)
@@ -437,7 +440,7 @@ def main(argv=None):
    parser.add_option("-p", "--plot",      dest="plot",      default=-1,  type="int",      \
                      help = "Specify a number between 0 and 20 to plot reflectivity")
  
-    parser.add_option(     "--loc",      dest="loc",      default=None,  type="int",      \
+   parser.add_option(     "--loc",      dest="loc",  type="float", default=None, nargs = 2,      \
                      help = "Specify location of NEWSe grid center (lat,lon)")
                   
                  
@@ -451,6 +454,13 @@ def main(argv=None):
    if options.dir == None:
           
       print "\n\n ***** USER MUST SPECIFY A DIRECTORY WHERE FILES ARE *****"
+      print "\n                         EXITING!\n\n"
+      parser.print_help()
+      print
+      sys.exit(1)
+      
+   if options.loc == None:
+      print "\n\n ***** USER MUST SPECIFY LAT/LON CENTER POINT *****"
       print "\n                         EXITING!\n\n"
       parser.print_help()
       print
@@ -473,8 +483,6 @@ def main(argv=None):
        hour   = int(options.realtime[8:10])
        minute = int(options.realtime[10:12])
        a_time = DT.datetime(year, mon, day, hour, minute, 0)
-
-   g_coords = (0.5*(36.5+45.5), 0.5*(-99.5 + -91.0))
 
 #-------------------------------------------------------------------------------
 
@@ -519,20 +527,38 @@ def main(argv=None):
 
    for n, file in enumerate(in_filenames):
    
+      if options.realtime != None:
+             out_filename = os.path.join(options.out_dir, rlt_filename)
+             time         = a_time
+             print(" Out filename:  %s\n" % out_filename)
+      else:
+          print options.realtime == None
+          str_time     = "%s_%s" % (os.path.basename(file)[-27:-17], os.path.basename(file)[-16:-10])
+          prefix       = "obs_seq_RF_%s" % str_time
+          out_filename = os.path.join(options.out_dir, prefix)
+          time         = DT.datetime.strptime(file[-18:-3], "%Y%m%d-%H%M%S")
+          print(" Out filename:  %s\n" % out_filename)
+              
       print(" ================================================================================")
       print(" Constructing.....%s" % file)
              
-      ref_obj = assemble_3D_grid(options.dir, os.path.basename(file), loc=g_coords, Quiet=False)
+      ref_obj = assemble_3D_grid(options.dir, os.path.basename(file), loc=options.loc, Quiet=False)
+      ref_obj.time = a_time
 
       ref_obj = dbz_masking(ref_obj, thin_zeros=_grid_dict['thin_zeros'])
-      
-      fsuffix = "MRMS_%s_%2.2d_KM" % (ref_obj.time.strftime('%Y%m%d%H%M'), int(ref_obj.zg[sweep_num]/100.))
-      plot_filename = os.path.join(options.out_dir, fsuffix)
-      grid_plot(ref_obj, sweep_num, plot_filename = plot_filename)
 
-      fsuffix = "MRMS_%s_Composite" % (ref_obj.time.strftime('%Y%m%d%H%M'))
-      plot_filename = os.path.join(options.out_dir, fsuffix)
-      grid_plot(ref_obj, -1, plot_filename = plot_filename)
+      if options.write == True:      
+          ret = write_DART_ascii(ref_obj, filename=out_filename, levels=np.arange(len(_grid_dict['levels'])),
+                                 obs_error=[_grid_dict['reflectivity'], _grid_dict['0reflectivity']], 
+                                 QC_info=_grid_dict['QC_info'])
+
+      if plot_grid:
+          fsuffix = "OpMRMS_%s_%2.2d_KM" % (ref_obj.time.strftime('%Y%m%d%H%M'), int(ref_obj.zg[sweep_num]/100.))
+          plot_filename = os.path.join(options.out_dir, fsuffix)
+          grid_plot(ref_obj, sweep_num, plot_filename = plot_filename)
+          fsuffix = "OpMRMS_%s_Composite" % (ref_obj.time.strftime('%Y%m%d%H%M'))
+          plot_filename = os.path.join(options.out_dir, fsuffix)
+          grid_plot(ref_obj, -1, plot_filename = plot_filename)
     
 #-------------------------------------------------------------------------------
 # Main program for testing...

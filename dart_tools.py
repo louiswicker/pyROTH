@@ -267,6 +267,7 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_d
    else:
        try:
            nz, ny, nx         = data.shape
+           print data.shape
            if levels  == None:
                nz2            = nz + 1
            else:
@@ -276,7 +277,7 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_d
            new_hgts           = np.ma.zeros((nz2), dtype=np.float32)
            
            for n, k in enumerate(levels):
-               new_data[n,...] = data[k,...]
+               new_data[n,...] = data[k]
                new_hgts[n]     = hgts[k]
            
            new_data[nz2-1] = obs.zero_dbz.data

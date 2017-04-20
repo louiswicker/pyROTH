@@ -154,9 +154,9 @@ NUM_Z 20
 #
 Z_RES_METERS 500.0
 #
-TIME_CUTOFF_SECONDS 450
+TIME_CUTOFF_SECONDS 720
 MAX_NUM_RADARS_PER_GRIDPOINT 3
-MAX_RADAR_DISTANCE_KM 200.0
+MAX_RADAR_DISTANCE_KM 300.0
 #
 #
 RADAR_INFO_FILE /work/john.krause/realtime/radarinfo.dat
@@ -193,6 +193,27 @@ def run_Prep_Grid3d(today):
     gmt = time.gmtime()  # for file names, here we need to use GMT time
 
     dt = quarter_datetime(datetime.datetime(*gmt[:6]))
+
+    str_time = dt.strftime("%Y%m%d%H%M")
+
+    cmd = "prep_grid3d.py -d %s -w -o %s --realtime %s -p 4" % (_MRMS_input_dir, obs_seq_out_dir, str_time)
+
+    print("\n Prep_Grid3d running job: at %s" % (time.strftime("%Y-%m-%d %H:%M:%S")))
+    print("\n %s" % cmd)
+    print("\n %s" % gmt)
+    print("\n %s" % str_time)
+
+#-------------------------------------------------------------------------------
+def run_Prep_MRMS(obs_seq_out_dir, time):
+"""
+  obs_seq_out_dir:  the directory to dump files into
+  time:             datetime object which includes what GMT time
+
+call looks like:  prep_mrms.py -d /work/LDM/MRMS/2017/04/20 -w -o /work/wicker/REALTIME/20170419 --realtime 201704200215 -p 3 --loc 41.109259 -94.913899
+
+"""
+
+    dt = quarter_datetime(time)
 
     str_time = dt.strftime("%Y%m%d%H%M")
 

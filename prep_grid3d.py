@@ -64,7 +64,7 @@ _grid_dict = {
               'min_dbz_zeros'   : 15.0,
               'reflectivity'    : 5.0,
               '0reflectivity'   : 5.0, 
-              'levels'          : [1,2,3,4,5,6,8,10,12,14, 16, 18],
+              'levels'          : [1,2,3,4,5,6,8,10,12,14,16,18],
               'QC_info'         : [[15.,5.],[20.,1.]],
              }
 
@@ -439,9 +439,8 @@ def main(argv=None):
       if options.realtime != None:
           out_filename = os.path.join(options.out_dir, rlt_filename)
           time         = a_time
-	  print(" Out filename:  %s\n" % out_filename)
+          print(" Out filename:  %s\n" % out_filename)
       else:
-          print options.realtime == None
           str_time     = "%s_%s" % (os.path.basename(file)[-18:-10], os.path.basename(file)[-9:-3])
           prefix       = "obs_seq_RF_%s" % str_time
           out_filename = os.path.join(options.out_dir, prefix)
@@ -476,14 +475,6 @@ def main(argv=None):
           ref_obj = Gridded_Field(file, data = ref,      field = "REFLECTIVITY", zg = msl, \
                                   lats = lats, lons = lons, radar_hgt = height0, time = time ) 
 
-#       ref_obj.data.field     = "REFLECTIVITY"
-#       ref_obj.data.zg        = msl
-#       ref_obj.data.lats      = lats
-#       ref_obj.data.lons      = lons
-#       ref_obj.data.radar_hgt = height0
-#       ref_obj.data.time      = {'data': np.array(dtime), 'units': "seconds since January 1, 1970"}
-#       ref_obj.data.time      = time
-      
       ref_obj = dbz_masking(ref_obj, thin_zeros=_grid_dict['thin_zeros'])
       
       if plot_grid:
