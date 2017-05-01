@@ -11,10 +11,10 @@ _MRMS_obs_seq    = "/work/wicker/REALTIME/"
 _NEWSe_grid_info = "/scratch/wof/realtime/radar_files"
 
 year       = 2017
-mon        = 04
-day        = [20, 20]
-hour       = [18,  20]
-min        = [0,   0]
+mon        = 05
+day        = [1, 1]
+hour       = [18, 19]
+min        = [30,  30]
 
 plot_level = 3
 

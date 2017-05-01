@@ -9,6 +9,7 @@ import datetime
 _MRMS_feed       = "/work/LDM/MRMS/"
 _MRMS_obs_seq    = "/work/wicker/REALTIME/"
 _NEWSe_grid_info = "/scratch/wof/realtime/radar_files"
+_NEWSe_prep_mrms = "/work/wicker/REALTIME/pyroth/prep_mrms.py"
 
 plot_level = 3
 
@@ -73,8 +74,8 @@ def scheduled_job():
     print("\n Reading from operational MRMS directory:  %s\n" % MRMS_dir)
     
     print("\n >>>>=======BEGIN===============================================================")
-    cmd = "prep_mrms.py -d %s -w -o %s --realtime %s -p %d --loc %f %f"  %  \
-          (MRMS_dir, obs_seq_out_dir, dt.strftime("%Y%m%d%H%M"), plot_level, lat, lon)
+    cmd = "%s -d %s -w -o %s --realtime %s -p %d --loc %f %f"  %  \
+          (_NEWSe_prep_mrms, MRMS_dir, obs_seq_out_dir, dt.strftime("%Y%m%d%H%M"), plot_level, lat, lon)
 
     print("\n Prep_MRMS called at %s" % (dt.strftime("%Y-%m-%d %H:%M:%S")))
     print(" Cmd: %s" % (cmd))

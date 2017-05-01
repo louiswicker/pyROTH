@@ -205,13 +205,13 @@ def run_Prep_Grid3d(today):
 
 #-------------------------------------------------------------------------------
 def run_Prep_MRMS(obs_seq_out_dir, time):
-"""
-  obs_seq_out_dir:  the directory to dump files into
-  time:             datetime object which includes what GMT time
+    """
+      obs_seq_out_dir:  the directory to dump files into
+      time:             datetime object which includes what GMT time
 
-call looks like:  prep_mrms.py -d /work/LDM/MRMS/2017/04/20 -w -o /work/wicker/REALTIME/20170419 --realtime 201704200215 -p 3 --loc 41.109259 -94.913899
+    call looks like:  prep_mrms.py -d /work/LDM/MRMS/2017/04/20 -w -o /work/wicker/REALTIME/20170419 --realtime 201704200215 -p 3 --loc 41.109259 -94.913899
 
-"""
+    """
 
     dt = quarter_datetime(time)
 

@@ -21,7 +21,6 @@ _write_grid_indices = False
 # if data object is 0dbz, then write it as a separate type if true
 
 _zero_dbz_obtype = True
-_nlevels_zeros   = 1
 
 #=========================================================================================
 # DART obs definitions (handy for writing out DART files)
@@ -217,7 +216,7 @@ def beam_elv(sfc_range, z):
 #
 ########################################################################################  
 def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_dbz_obtype,
-                     levels = None, QC_info=None):
+                     levels = None, QC_info=None, zero_levels=[]):
 
    if filename == None:
        print("\n write_DART_ascii:  No output file name is given, writing to %s" % "obs_seq.txt")
@@ -267,21 +266,28 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_d
    else:
        try:
            nz, ny, nx         = data.shape
-           print data.shape
            if levels  == None:
-               nz2            = nz + 1
+               nz2            = nz + len(zero_levels)
            else:
-               nz2            = len(levels) + 1
+               nz2            = len(levels) + len(zero_levels)
+               
+           print nz, nz2
            
            new_data           = np.ma.zeros((nz2, ny, nx), dtype=np.float32)
            new_hgts           = np.ma.zeros((nz2), dtype=np.float32)
            
            for n, k in enumerate(levels):
-               new_data[n,...] = data[k]
-               new_hgts[n]     = hgts[k]
+               print n
+               new_data[n,...] = data[n]
+               new_hgts[n]     = hgts[n]
            
-           new_data[nz2-1] = obs.zero_dbz.data
-           new_hgts[nz2-1] = obs.zero_dbz.zg[0]
+           for n, lvl in enumerate(zero_levels):
+               print n
+               new_data[nz+n] = obs.zero_dbz.data
+               new_hgts[nz+n] = lvl
+               
+           print new_hgts
+               
            data = new_data
            hgts = new_hgts
            print("\n write_DART_ascii:  0-DBZ separate type added to reflectivity output\n")
@@ -351,9 +357,10 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_d
       
            fi.write("obdef\n")
            fi.write("loc3d\n")
-           
+
+# dont know why I needed to have the next set of logic.           
            if ( (kind == ObType_LookUp("REFLECTIVITY")) and (data[k,j,i] <= 0.1) and zero_dbz_obtype):
-               z = hgts[-1]
+               z = hgts[k]
            else:
                z = hgts[k]
                

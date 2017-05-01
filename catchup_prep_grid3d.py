@@ -11,9 +11,9 @@ _MRMS_obs_seq         = "/work/john.krause/realtime/"
 
 year       = 2017
 mon        = 04
-day        = [20, 20]
-hour       = [17, 19]
-min        = [0,  30]
+day        = [21, 21]
+hour       = [16, 23]
+min        = [0,  0]
 thin       = 1
 
 plot_level = 4
