@@ -277,16 +277,12 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_d
            new_hgts           = np.ma.zeros((nz2), dtype=np.float32)
            
            for n, k in enumerate(levels):
-               print n
                new_data[n,...] = data[n]
                new_hgts[n]     = hgts[n]
            
            for n, lvl in enumerate(zero_levels):
-               print n
                new_data[nz+n] = obs.zero_dbz.data
                new_hgts[nz+n] = lvl
-               
-           print new_hgts
                
            data = new_data
            hgts = new_hgts

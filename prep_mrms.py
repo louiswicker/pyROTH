@@ -19,6 +19,16 @@ import sys
 import glob
 import time as timeit
 
+# Need to set the backend BEFORE loading pyplot
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+plt.ioff()
+from mpl_toolkits.basemap import Basemap
+
+import warnings
+warnings.filterwarnings("ignore")
+
 import numpy as np
 import scipy.interpolate
 import scipy.ndimage as ndimage
@@ -28,15 +38,10 @@ from mpl_toolkits.axes_grid1.anchored_artists import AnchoredText
 import netCDF4 as ncdf
 
 from pyproj import Proj
-import pylab as plt  
-from mpl_toolkits.basemap import Basemap
 from pyart.graph import cm
 import datetime as DT
 from numpy import ma
 from dart_tools import *
-
-import warnings
-warnings.filterwarnings("ignore")
 
 # missing value
 _missing = -9999.
