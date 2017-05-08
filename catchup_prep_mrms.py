@@ -9,12 +9,13 @@ import datetime
 _MRMS_feed       = "/work/LDM/MRMS/"
 _MRMS_obs_seq    = "/work/wicker/REALTIME/"
 _NEWSe_grid_info = "/scratch/wof/realtime/radar_files"
+_prep_mrms       = "/work/wicker/realtime/pyroth/prep_mrms2.py"
 
 year       = 2017
 mon        = 5
-day        = [4, 4]
-hour       = [16, 16]
-min        = [30, 30]
+day        = [8, 8]
+hour       = [17, 19]
+min        = [30, 0]
 
 plot_level = 3
 
@@ -27,7 +28,6 @@ obs_seq_out_dir = os.path.join(_MRMS_obs_seq, start_time.strftime("%Y%m%d"))
 # create path for NEWSe radar file
 
 radar_csh_file = os.path.join(_NEWSe_grid_info, ("radars.%s.csh" % start_time.strftime("%Y%m%d")))
-print radar_csh_file
 
 # Parse center lat and lon out of the c-shell radar file - HARDCODED!
 # If the file does not exist, then we exit out of this run
@@ -58,12 +58,12 @@ while start_time < stop_time:
     print("\n Reading from operational MRMS directory:  %s\n" % MRMS_dir)
     
     print("\n >>>>=======BEGIN===============================================================")
-    cmd = "prep_mrms.py -d %s -w -o %s --realtime %s -p %d --loc %f %f"  %  \
-          (MRMS_dir, obs_seq_out_dir, start_time.strftime("%Y%m%d%H%M"), plot_level, lat, lon)
+    cmd = "%s -d %s -w -o %s --realtime %s -p %d --loc %f %f"  %  \
+          (_prep_mrms, MRMS_dir, obs_seq_out_dir, start_time.strftime("%Y%m%d%H%M"), plot_level, lat, lon)
 
     print("\n Prep_MRMS called at %s" % (time.strftime("%Y-%m-%d %H:%M:%S")))
     print(" Cmd: %s" % (cmd))
-    ret = os.system("%s >> log_prep_MRMS" % cmd)
+    ret = os.system("%s" % cmd)
     if ret != 0:
         print("\n ============================================================================")
         print("\n Prep_MRMS cannot find a RF file between [-2,+1] min of %s" % start_time.strftime("%Y%m%d%H%M"))

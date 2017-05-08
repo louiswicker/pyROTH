@@ -244,10 +244,10 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_d
    kind       = ObType_LookUp(obs.field.upper())
 
    if QC_info != None:
-       print("\n QC_info is specified:  %f dbz %f qc / %f dbz %f qc" % (QC_info[0][0],
-                                                                        QC_info[0][1],
-                                                                        QC_info[1][0],
-                                                                        QC_info[1][1]))
+       print("\n Special DBZ QC errors are used:  %f dbz %f qc / %f dbz %f qc" % (QC_info[0][0],
+                                                                                  QC_info[0][1],
+                                                                                  QC_info[1][0],
+                                                                                  QC_info[1][1]))
    QC_default = 1.0
 
 # Fix the negative lons...
@@ -271,8 +271,6 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=_zero_d
            else:
                nz2            = len(levels) + len(zero_levels)
                
-           print nz, nz2
-           
            new_data           = np.ma.zeros((nz2, ny, nx), dtype=np.float32)
            new_hgts           = np.ma.zeros((nz2), dtype=np.float32)
            

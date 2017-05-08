@@ -64,6 +64,10 @@ _temp_netcdf_file = "/work/wicker/REALTIME/tmp.nc"
 NX = 180
 NY = 180
 
+# Debug
+
+_debug = False
+
 ##########################################################################################
 # Parameter dict for reflectivity masking
 _grid_dict = {
@@ -116,7 +120,7 @@ def get_loc(x, xc, radius):
 #=========================================================================================
 # Get the filenames out of the directory
 
-def get_dir_files(dir, pattern, Quiet=False):
+def get_dir_files(dir, pattern, debug=False):
 
     try:
         os.path.isdir(dir)
@@ -126,7 +130,7 @@ def get_dir_files(dir, pattern, Quiet=False):
         
     filenames = glob.glob("%s/01.00/*.netcdf.gz" % (dir))
 
-    if not Quiet:
+    if debug:
         print("\n Processing %d files in the directory:  %s" % (len(filenames), dir))
         print("\n First file is %s" % (os.path.basename(filenames[0])))
         print("\n Last  file is %s\n" % (os.path.basename(filenames[-1])))
@@ -136,7 +140,7 @@ def get_dir_files(dir, pattern, Quiet=False):
 #=========================================================================================
 # Get the filenames out of the directory
 
-def assemble_3D_grid(path, filename, loc=None, Quiet=False):
+def assemble_3D_grid(path, filename, loc=None, debug=False):
 
     try:
         os.path.isdir(path)
@@ -150,13 +154,13 @@ def assemble_3D_grid(path, filename, loc=None, Quiet=False):
     for n, lvl in enumerate(levels):
     
          full_path = os.path.join(path, lvl, filename)
-         print full_path
          
-         if not Quiet:
+         if debug:
+             print full_path
              print("\n Processing level %s in the directory:  %s" % (lvl, path))
       
          cmd = "gunzip -c %s > %s" % (full_path, _temp_netcdf_file)
-         if not Quiet:
+         if debug:
              print("\n Running......%s" % (cmd))
 
          os.system(cmd)
@@ -182,7 +186,21 @@ def assemble_3D_grid(path, filename, loc=None, Quiet=False):
              i0, i1 = ic-NX/2, ic+NX/2
              j0, j1 = jc-NY/2, jc+NY/2
 
-             if not Quiet:
+# Fixing things when the NEWSe domain goes out of bounds
+
+             if i0 < 0:  
+                 print("\n West edge of requested domain outside of MRMS grid:  %d " % (i0))
+                 print("\n Adjusting indices")
+                 i0       = 0
+
+             if j0 < 0:  
+                 print("\n South edge of requested domain outside of MRMS grid:  %d " % (i0))
+                 print("\n Adjusting indices")
+                 j0       = 0
+
+             if debug:
+                 print("\n %d  %d" % (i0, i1))
+                 print("\n %d  %d" % (j0, j1))
                  print("\n SW Lon:  %f  NE_Lon:  %f" % (f_lons[i0], f_lons[i1]))
                  print("\n SW Lat:  %f  NE_Lat:  %f" % (f_lats[j0], f_lats[j1]))
                       
@@ -306,7 +324,7 @@ def plot_shapefiles(map, shapefiles=None, color='k', linewidth=0.5, ax=None, \
 #
 # Create processed reflectivity data  
 
-def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False):
+def plot_grid(ref, sweep, plot_filename=None, shapefiles=None, interactive=False, debug=False):
   
 # Set up colormaps 
 
@@ -321,7 +339,7 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
 # Create png file label
 
   if plot_filename == None:
-      print("\n pyROTH.grid_plot:  No output file name is given, writing to %s" % "RF_...png")
+      print("\n Prep_MRMS.plot_grid:  No output file name is given, writing to %s" % "RF_...png")
       filename = "RF_%2.2d_plot.%s" % (sweep, _plot_format)
   else:
        filename = "%s.%s" % (plot_filename, _plot_format)
@@ -335,23 +353,30 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
   sw_lat = ref.lats.min()
   ne_lat = ref.lats.max()
 
+  ref_data = ref.data[sweep]
+  ny, nx = ref_data.shape
+
   bgmap = Basemap(projection='lcc', llcrnrlon=sw_lon,llcrnrlat=sw_lat,urcrnrlon=ne_lon,urcrnrlat=ne_lat, \
                   lat_0=0.5*(ne_lat+sw_lat), lon_0=0.5*(ne_lon+sw_lon), resolution='i', area_thresh=10., ax=axes[0])
                   
-  xg, yg = bgmap(ref.lons, ref.lats)
-    
-  yg_2d, xg_2d = np.meshgrid(yg, xg)
+# lon_2d, lat_2d = bgmap.makegrid(nx, ny)
+  lon_2d, lat_2d = np.meshgrid(ref.lons, ref.lats)
+  xg, yg = bgmap(lon_2d, lat_2d)
   
-  yg_2d = yg_2d.transpose()
-  xg_2d = xg_2d.transpose()
-  
+# Need to flip y-indices (matrix)
+
+# yg = yg[::-1,:]
+   
 # fix xg, yg coordinates so that pcolormesh plots them in the center.
 
-  dx2 = 0.5*(xg[1] - xg[0])
-  dy2 = 0.5*(yg[1] - yg[0])
+  dx2 = 0.5*(xg[0,0] - xg[0,1])
+  dy2 = 0.5*(yg[0,0] - yg[1,0])
+
+  if debug:
+       print("\n Prep_MRMS.plot_grid:   DX:  %f   DY:   %f" % (dx2, dy2))
   
-  xe = np.append(xg-dx2, [xg[-1] + dx2])
-  ye = np.append(yg-dy2, [yg[-1] + dy2])
+  xe = np.append(xg-dx2, [xg[:,-1] + dx2])
+  ye = np.append(yg-dy2, [yg[-1,:] + dy2])
 
 # CAPPI REFLECTVITY PLOT
 
@@ -383,7 +408,7 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
 #     plot_shapefiles(bgmap, counties=_plot_counties, ax=axes[1])
 #
 
-  im1 = bgmap.contourf(xg_2d, yg_2d, ref_data, levels= _ref_scale, cmap=cmapr, norm=normr, \
+  im1 = bgmap.contourf(xg, yg, ref_data, levels= _ref_scale, cmap=cmapr, norm=normr, \
                        vmin = _ref_min_plot, vmax = _ref_scale.max(), ax=axes[0])
 
   cbar = bgmap.colorbar(im1,location='right')
@@ -426,7 +451,7 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
 # else:
 #     plot_shapefiles(bgmap, counties=_plot_counties, ax=axes[3])
  
-  im1 = bgmap.contourf(xg_2d, yg_2d, ref_data, levels= _ref_scale, cmap=cmapr, norm=normr, \
+  im1 = bgmap.contourf(xg, yg, ref_data, levels= _ref_scale, cmap=cmapr, norm=normr, \
                        vmin = _ref_min_plot, vmax = _ref_scale.max(), ax=axes[1])
 
   cbar = bgmap.colorbar(im1,location='right')
@@ -439,11 +464,12 @@ def grid_plot(ref, sweep, plot_filename=None, shapefiles=None, interactive=False
 # Plot zeros as "o"
 
   if zero_dbz != None:
-      r_mask = (zero_dbz.mask == False)
-      print("\n Number of zero reflectivity obs found:  %d" % np.sum(r_mask) )
-      bgmap.scatter(xg_2d[r_mask], yg_2d[r_mask], s=15, facecolors='none', \
+      r_mask = (zero_dbz.mask == False)     
+      bgmap.scatter(xg[r_mask], yg[r_mask], s=15, facecolors='none', \
                     edgecolors='k', alpha=0.3, ax=axes[1]) 
-
+      if debug:
+           print("\n Prep_MRMS.plot_grid:  Number of zero reflectivity obs found:  %d" % np.sum(r_mask) )
+           
 # Get other metadata....for labeling
 
   time_text = ref.time.strftime('%Y-%m-%d %H:%M')
@@ -511,10 +537,10 @@ def main(argv=None):
        _grid_dict['thin_grid'] = options.thin
       
    if options.plot < 0:
-       plot_grid = False
+       plot_grid_flag = False
    else:
        sweep_num = options.plot
-       plot_grid = True
+       plot_grid_flag = True
        plot_filename = None
 
    if options.realtime != None:
@@ -531,7 +557,7 @@ def main(argv=None):
 
    if options.realtime != None:
 
-       in_filenames = get_dir_files(options.dir, options.grep, Quiet=False)
+       in_filenames = get_dir_files(options.dir, options.grep, debug=_debug)
 
        for n, file in enumerate(in_filenames):
            f_time = DT.datetime.strptime(os.path.basename(file)[-25:-10], "%Y%m%d-%H%M%S")
@@ -549,7 +575,7 @@ def main(argv=None):
            sys.exit(1)
 
    else:
-       in_filenames = get_dir_files(options.dir, options.grep, Quiet=False)
+       in_filenames = get_dir_files(options.dir, options.grep, debug=_debug)
        out_filenames = []
        print("\n prep_mrms:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dir))
        print("\n prep_mrms:  First file is %s\n" % (in_filenames[0]))
@@ -583,7 +609,7 @@ def main(argv=None):
       print(" ================================================================================")
       print(" Constructing.....%s" % file)
              
-      ref_obj = assemble_3D_grid(options.dir, os.path.basename(file), loc=options.loc, Quiet=False)
+      ref_obj = assemble_3D_grid(options.dir, os.path.basename(file), loc=options.loc, debug=_debug)
       ref_obj.time = a_time
 
       ref_obj = dbz_masking(ref_obj, thin_zeros=_grid_dict['thin_zeros'])
@@ -593,10 +619,10 @@ def main(argv=None):
                                  obs_error=[_grid_dict['reflectivity'], _grid_dict['0reflectivity']], 
                                  QC_info=_grid_dict['QC_info'], zero_levels=_grid_dict['zero_levels'])
 
-      if plot_grid:
+      if plot_grid_flag:
           fsuffix = "OpMRMS_%s" % (ref_obj.time.strftime('%Y%m%d%H%M'))
           plot_filename = os.path.join(options.out_dir, fsuffix)
-          grid_plot(ref_obj, sweep_num, plot_filename = plot_filename)
+          plot_grid(ref_obj, sweep_num, plot_filename = plot_filename, debug=_debug)
     
 #-------------------------------------------------------------------------------
 # Main program for testing...
