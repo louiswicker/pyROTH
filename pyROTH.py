@@ -698,7 +698,7 @@ def volume_prep(radar, unfold_type="phase"):
                                    interval_limits=None, skip_between_rays=100, 
                                    skip_along_ray=100, centered=True, 
                                    nyquist_vel=None, check_nyquist_uniform=True, 
-                                   gatefilter=False, rays_wrap_around=None, 
+                                   gatefilter=gatefilter, rays_wrap_around=None, 
                                    keep_original=False, set_limits=True, 
                                    vel_field='velocity', corr_vel_field=None)
      
