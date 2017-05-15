@@ -26,6 +26,8 @@ _states   = False
 _shapefiles = None
 _level      = 0
 
+_min_dbz    = 35.
+
 # Colorscale information
 _ref_scale = (0.,74.)
 _vr_scale  = (-40.,40.)
@@ -69,6 +71,10 @@ def volume_prep(radar, unfold_type="phase"):
   gatefilter.exclude_invalid('reflectivity')
   gatefilter.exclude_masked('velocity')
   gatefilter.exclude_masked('reflectivity')
+  gatefilter.exclude_below('reflectivity', _min_dbz)
+
+  pyart.correct.despeckle.despeckle_field(radar, 'velocity', threshold=-100, size=10, gatefilter=gatefilter, delta=5.0)
+  pyart.correct.despeckle.despeckle_field(radar, 'reflectivity', threshold=-100, size=10, gatefilter=gatefilter, delta=5.0)
 
 # Dealias the velocity data
 
@@ -90,7 +96,7 @@ def volume_prep(radar, unfold_type="phase"):
                                    interval_limits=None, skip_between_rays=100, 
                                    skip_along_ray=100, centered=True, 
                                    nyquist_vel=None, check_nyquist_uniform=True, 
-                                   gatefilter=False, rays_wrap_around=None, 
+                                   gatefilter=gatefilter, rays_wrap_around=None, 
                                    keep_original=False, set_limits=True, 
                                    vel_field='velocity', corr_vel_field=None)
      
@@ -359,21 +365,25 @@ if __name__ == "__main__":
     volume = pyart.io.read_nexrad_archive(filename)
     
   # unfolding can fail if the data are not written quite write - instead of quiting, try to unfold with region method
-    try:
-        gatefilter = volume_prep(volume, unfold_type=unfold_type) 
-        vr_field = "unfolded velocity"
-        vr_label = "Unfolded Radial Velocity"
-    except:
+    if unfold_type == None:
+        vr_field = "velocity"
+        vr_label = "Radial Velocity"
+
+    else:
         try:
-            print("\n ----> Phase unfolding method has failed!! Trying region unfolding method\n")
-            gatefilter = volume_prep(volume, unfold_type="region")
+            gatefilter = volume_prep(volume, unfold_type=unfold_type) 
             vr_field = "unfolded velocity"
             vr_label = "Unfolded Radial Velocity"
         except:
-            print("\n ----> Both unfolding methods have failed!! Turning off unfolding\n\n")
-            unfold_type = None
-            vr_field = "velocity"
-            vr_label = "Radial Velocity"
+            try:
+                print("\n ----> Phase unfolding method has failed!! Trying region unfolding method\n")
+                gatefilter = volume_prep(volume, unfold_type="region")
+                vr_field = "unfolded velocity"
+                vr_label = "Unfolded Radial Velocity"
+            except:
+                print("\n ----> Both unfolding methods have failed!! Turning off unfolding\n\n")
+                vr_field = "velocity"
+                vr_label = "Radial Velocity"
 
     outfile  = plot_ppi_map(volume, "reflectivity", level=options.level, vRange=_ref_scale, cmap=_ref_ctable, \
                             ax=axes[0], var_label='Reflectivity', shape_env=shapefiles, zoom=options.zoom)
