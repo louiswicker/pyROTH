@@ -12,6 +12,7 @@ from optparse import OptionParser
 import os
 import ctables
 import time as timeit
+import vad
 
 from mpl_toolkits.basemap import Basemap
 from pyproj import Proj
@@ -26,7 +27,8 @@ _states   = False
 _shapefiles = None
 _level      = 0
 
-_min_dbz    = 35.
+_min_dbz    = 10.
+_min_snr    = 10.
 
 # Colorscale information
 _ref_scale = (0.,74.)
@@ -44,8 +46,8 @@ _range_rings = [25, 50, 75, 100, 125]
 _max_range    = 150000.
 _x_plot_range = [-_max_range, _max_range]
 _y_plot_range = [-_max_range, _max_range] 
-_lat_lines    = True
-_lon_lines    = True
+_lat_lines    = False
+_lon_lines    = False
 
 # Output file format
 _file_type = "png"
@@ -69,12 +71,11 @@ def volume_prep(radar, unfold_type="phase"):
   gatefilter = pyart.correct.GateFilter(radar)
   gatefilter.exclude_invalid('velocity')
   gatefilter.exclude_invalid('reflectivity')
-  gatefilter.exclude_masked('velocity')
   gatefilter.exclude_masked('reflectivity')
   gatefilter.exclude_below('reflectivity', _min_dbz)
 
-  pyart.correct.despeckle.despeckle_field(radar, 'velocity', threshold=-100, size=10, gatefilter=gatefilter, delta=5.0)
-  pyart.correct.despeckle.despeckle_field(radar, 'reflectivity', threshold=-100, size=10, gatefilter=gatefilter, delta=5.0)
+# pyart.correct.despeckle.despeckle_field(radar, 'velocity', threshold=-100, size=10, gatefilter=gatefilter, delta=5.0)
+# pyart.correct.despeckle.despeckle_field(radar, 'reflectivity', threshold=-100, size=100, gatefilter=gatefilter, delta=5.0)
 
 # Dealias the velocity data
 
@@ -363,7 +364,20 @@ if __name__ == "__main__":
     fig, axes = P.subplots(1, 2, sharey=True, figsize=(15,6))
   
     volume = pyart.io.read_nexrad_archive(filename)
-    
+
+# Filter based on masking, dBZ threshold, and invalid gates
+
+    gatefilter = pyart.correct.GateFilter(volume)
+    gatefilter.exclude_invalid('velocity')
+    gatefilter.exclude_invalid('reflectivity')
+    gatefilter.exclude_masked('reflectivity')
+    gatefilter.exclude_below('reflectivity', _min_dbz)
+
+#   z_want=np.linspace(500, 10500, 101)
+#   u_mean, v_mean = vad.VAD(volume, z_want)
+#   
+#   print u_mean, v_mean
+
   # unfolding can fail if the data are not written quite write - instead of quiting, try to unfold with region method
     if unfold_type == None:
         vr_field = "velocity"
