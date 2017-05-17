@@ -3,8 +3,6 @@
 import matplotlib.pyplot as plt
 import pyart
 import matplotlib
-import pylab as P
-import numpy as N
 import numpy as np
 import sys
 import glob
@@ -12,7 +10,10 @@ from optparse import OptionParser
 import os
 import ctables
 import time as timeit
-import vad
+
+import warnings
+warnings.filterwarnings("ignore")
+
 
 from mpl_toolkits.basemap import Basemap
 from pyproj import Proj
@@ -21,14 +22,17 @@ from pyproj import Proj
 #
 # Useful defaults if you are doing a lot of plot and dont want to put them on the command line
 #
-_counties = True
+_counties = False
 _states   = False
 
 _shapefiles = None
 _level      = 0
 
-_min_dbz    = 10.
-_min_snr    = 10.
+_thres_vr_from_ref = True
+_min_dbz           = 10.
+_spw_filter        = 5.0
+_rhv_filter        = 0.90
+_zdr_filter        = 2.0
 
 # Colorscale information
 _ref_scale = (0.,74.)
@@ -39,7 +43,7 @@ _ref_ctable = ctables.NWSRef
 _vr_ctable  = ctables.Carbone42
 
 # Range rings in km
-_plot_RangeRings = False
+_plot_RangeRings = True
 _range_rings = [25, 50, 75, 100, 125] 
 
 # How much to plot
@@ -56,15 +60,22 @@ _file_type = "png"
 debug = False
 
 ########################################################################
-# Volume Prep:  Threshold data and unfold velocities
+# Volume Prep:  QC and field-based thresholding
 
-def volume_prep(radar, unfold_type="phase"):
+def volume_prep(radar, do_QC = True, thres_vr_from_ref = True):
           
-# Mask data beyond max_range
+# Compute max gate to be used...
 
   max_range_gate = np.abs(radar.range['data'] - _max_range).argmin()
+
+# Mask data beyond max_range
+
   radar.fields['reflectivity']['data'][:,max_range_gate:] = np.ma.masked
   radar.fields['velocity']['data'][:,max_range_gate:] = np.ma.masked
+  radar.fields['spectrum_width']['data'][:,max_range_gate:] = np.ma.masked
+  radar.fields['cross_correlation_ratio']['data'][:,max_range_gate:] = np.ma.masked
+  radar.fields['differential_reflectivity']['data'][:,max_range_gate:] = np.ma.masked
+  radar.fields['cross_correlation_ratio']['data'][:,max_range_gate:] = np.ma.masked
 
 # Filter based on masking, dBZ threshold, and invalid gates
 
@@ -72,10 +83,53 @@ def volume_prep(radar, unfold_type="phase"):
   gatefilter.exclude_invalid('velocity')
   gatefilter.exclude_invalid('reflectivity')
   gatefilter.exclude_masked('reflectivity')
-  gatefilter.exclude_below('reflectivity', _min_dbz)
 
+  ref_mask = (radar.fields['reflectivity']['data'] < _min_dbz)
+  
+  if do_QC == False:
+      if thres_vr_from_ref:
+          radar.fields['velocity']['data'].mask = (((radar.fields['velocity']['data'].mask | ref_mask) ) )
+      return gatefilter
+      
+  else:
+      spw_mask = (radar.fields['spectrum_width']['data'] > _spw_filter)
+
+      kdp_mask = (radar.fields['cross_correlation_ratio']['data'] < _rhv_filter )
+      kdp_mask2 = (radar.fields['cross_correlation_ratio']['data'] < 0.7 )
+
+      zdr_mask = (radar.fields['differential_reflectivity']['data'] > _zdr_filter)
+  
+      print("\n Volume_prep:  ZdR   > thres:  %f  Number of gates removed:  %d" %( _zdr_filter, np.sum(zdr_mask == True)))
+      print("\n Volume_prep:  RHOHV < thres:  %f  Number of gates removed:  %d" %( _rhv_filter, np.sum(kdp_mask == True)))
+      print("\n Volume_prep:  SPWTH > thres:  %f  Number of gates removed:  %d" %( _spw_filter, np.sum(spw_mask == True)))
+    
+      print("\n Volume_prep:  Number of valid DBZ gates before dual-pol masking:  %d  " % 
+                np.sum(radar.fields['reflectivity']['data'].mask == False))
+
+      print("\n Volume_prep:  Number of valid Velocity gates before dual-pol masking:  %d  " % 
+                np.sum(radar.fields['velocity']['data'].mask == False))
+   
+      radar.fields['reflectivity']['data'].mask = (((radar.fields['reflectivity']['data'].mask) | kdp_mask) | zdr_mask | ref_mask)
+      radar.fields['velocity']['data'].mask     = (((radar.fields['velocity']['data'].mask | spw_mask) ) )
+
+      if thres_vr_from_ref:
+          radar.fields['velocity']['data'].mask = (((radar.fields['velocity']['data'].mask | ref_mask) ) )
+      
+      print("\n Volume_prep:  Number of valid DBZ gates after dual-pol masking:  %d  " % 
+                np.sum(radar.fields['reflectivity']['data'].mask == False))
+
+      print("\n Volume_prep:  Number of valid Velocity gates after spectrum width masking:  %d \n" % 
+                np.sum(radar.fields['velocity']['data'].mask == False))
+  
 # pyart.correct.despeckle.despeckle_field(radar, 'velocity', threshold=-100, size=10, gatefilter=gatefilter, delta=5.0)
-# pyart.correct.despeckle.despeckle_field(radar, 'reflectivity', threshold=-100, size=100, gatefilter=gatefilter, delta=5.0)
+#pyart.correct.despeckle.despeckle_field(radar, 'reflectivity', threshold=-100, size=100, gatefilter=gatefilter, delta=5.0)
+
+      return gatefilter
+
+########################################################################
+# Just a wrapper for velocity unfolding...
+  
+def velocity_unfold(radar, unfold_type="phase", gatefilter=None):
 
 # Dealias the velocity data
 
@@ -134,12 +188,12 @@ def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, supress_ticks = True,
    tt = timeit.clock()
    
    map = Basemap(llcrnrlon=glon.min(), llcrnrlat=glat.min(), \
-                  urcrnrlon=glon.max(), urcrnrlat=glat.max(), \
-                  lat_0 = r_lat, lon_0=r_lon, \
-                  projection = 'lcc',      \
-                  resolution=resolution,   \
-                  area_thresh=area_thresh, \
-                  suppress_ticks=supress_ticks, ax=ax)
+                 urcrnrlon=glon.max(), urcrnrlat=glat.max(), \
+                 lat_0 = r_lat, lon_0=r_lon, \
+                 projection = 'lcc',      \
+                 resolution=resolution,   \
+                 area_thresh=area_thresh, \
+                 suppress_ticks=supress_ticks, ax=ax)
 
    if counties or _counties:
       map.drawcounties()
@@ -148,11 +202,11 @@ def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, supress_ticks = True,
        map.drawstates()
        
    if lat_lines == True:
-       lat_lines = N.arange(30., 60., 0.5)
+       lat_lines = np.arange(30., 60., 0.5)
        map.drawparallels(lat_lines, labels=[1,0,0,0], fontsize=10)
        
    if lon_lines == True:
-       lon_lines = N.arange(-110., 70., 0.5)
+       lon_lines = np.arange(-110., 70., 0.5)
        map.drawmeridians(lon_lines, labels=[0,0,0,1], fontsize=10)
        
    # Shape file stuff
@@ -167,7 +221,7 @@ def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, supress_ticks = True,
 
           s = map.readshapefile(shapefile,'shapeinfo',drawbounds=False)
 
-          for shape in map.shapeinfo:
+          for shape in maplt.shapeinfo:
               xx, yy = zip(*shape)
               map.plot(xx,yy,color=color,linewidth=linewidth,ax=ax)
 
@@ -176,7 +230,7 @@ def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, supress_ticks = True,
    if debug:  print(timeit.clock()-tt,' secs to create original Basemap instance')
 
    if pickle:
-      pickle.dump(map,open('mymap.pickle','wb'),-1)
+      pickle.dump(map,open('mymaplt.pickle','wb'),-1)
       print(timeit.clock()-tt,' secs to create original Basemap instance and pickle it')
 
    return map
@@ -206,10 +260,10 @@ def create_ppi_map(radar, xr, yr, plot_range_rings=_plot_RangeRings, ax=None, **
    xmap, ymap = map(lon, lat)
 
    if plot_range_rings:
-      angle = N.linspace(0., 2.0 * N.pi, 360)
+      angle = np.linspace(0., 2.0 * np.pi, 360)
       for ring in _range_rings:
-         xpts = radar_x + ring * 1000. * N.sin(angle)
-         ypts = radar_y + ring * 1000. * N.cos(angle)
+         xpts = radar_x + ring * 1000. * np.sin(angle)
+         ypts = radar_y + ring * 1000. * np.cos(angle)
          map.plot(xpts, ypts, color = 'gray', alpha = 0.5, linewidth = 1.0, ax=ax)  
                  
    return map, xmap, ymap, radar_x, radar_y
@@ -224,7 +278,7 @@ def plot_ppi_map(radar, field, level = 0, cmap=ctables.Carbone42, vRange=None, v
    
 # Fix super-res blank velocity field to next scan level...
 
-   if N.sum(data.mask == True) == data.size:
+   if np.sum(data.mask == True) == data.size:
       start = radar.get_start(level+1)
       end   = radar.get_end(level+1) + 1
       data  = radar.fields[field]['data'][start:end]
@@ -256,10 +310,10 @@ def plot_ppi_map(radar, field, level = 0, cmap=ctables.Carbone42, vRange=None, v
        cbar.set_label(field, fontweight='bold')
        title_string = "%s    EL:  %4.2f deg" % (field,  el)
 
-   P.suptitle(time, fontsize=16)
-   P.title(title_string)
+   plt.suptitle(time, fontsize=16)
+   plt.title(title_string)
    
-   print("\nCompleted plot for %s" % field)
+   print("\n Completed plot for %s" % field)
      
    return 
      
@@ -271,7 +325,7 @@ if __name__ == "__main__":
   print ' ================================================================================'
   print ''
   print ''
-  print '                   BEGIN PROGRAM pyPlot_lvl2                    '
+  print '                   BEGIN PROGRAM pyPlot_LvL2                   '
   print ''
 
   parser = OptionParser()
@@ -284,16 +338,22 @@ if __name__ == "__main__":
   parser.add_option("-f", "--file",      dest="fname",     default=None,  type="string", \
                     help = "filename of NEXRAD level II volume to process")
 
-  parser.add_option("-l", "--level",      dest="level",     default=0,  type="int", \
-                    help = "Tilt index of NEXRAD sweep--> 0: 0.5 degrees")
-                 
+  parser.add_option("-p", "--plot",     dest="level",     default=0,  type="int", \
+                    help = "Tilt index of NEXRAD sweep--> 0: 0.5 degrees")         
                  
   parser.add_option("-u", "--unfold",    dest="unfold",    default="phase",  type="string", \
                     help = "dealiasing method to use (phase or region, default = phase)")
   
   parser.add_option("-i", "--interactive", dest="interactive", default=False,  action="store_true",     \
                      help = "Boolean flag to plot image to screen")  
-                     
+ 
+  parser.add_option("-r", "--raw", dest="raw", default=False,  action="store_true",     \
+                     help = "Boolean flag to not perform QC on reflectivity or velocity")  
+ 
+  parser.add_option(     "--plot2", dest="plot2", default=False,  action="store_true",     \
+                     help = "Boolean flag which will only plot reflectivity and velocity, \
+                             default is all six LvL2 fields")  
+
   parser.add_option("-s", "--shapefiles", dest="shapefiles", default=None, type="string",    \
                      help = "Name of system env shapefile you want to add to the plots.")
                      
@@ -329,9 +389,9 @@ if __name__ == "__main__":
 
   else:
     in_filenames = glob.glob("%s/*" % os.path.abspath(options.dname))
-    print("\n pyROTH:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dname))
-    print("\n pyROTH:  First file is %s\n" % (in_filenames[0]))
-    print("\n pyROTH:  Last  file is %s\n" % (in_filenames[-1]))
+    print("\n pyPlot_LvL2:  Processing %d files in the directory:  %s\n" % (len(in_filenames), options.dname))
+    print("\n pyPlot_LvL2:  First file is %s\n" % (in_filenames[0]))
+    print("\n pyPlot_LvL2:  Last  file is %s\n" % (in_filenames[-1]))
 
     if in_filenames[0][-3:] == "V06":
       for item in in_filenames:
@@ -341,10 +401,9 @@ if __name__ == "__main__":
         out_filenames.append(strng)
 
   if options.unfold == "phase":
-      print "\n pyROTH dealias_unwrap_phase unfolding will be used\n"
       unfold_type = "phase"
   elif options.unfold == "region":
-      print "\n pyROTH dealias_region_based unfolding will be used\n"
+      print "\n pyPlot_LvL2 dealias_region_based unfolding will be used\n"
       unfold_type = "region"
   else:
       print "\n ***** INVALID OR NO VELOCITY DEALIASING METHOD SPECIFIED *****"
@@ -357,41 +416,43 @@ if __name__ == "__main__":
       shapefiles = _shapefiles
 
 #===========================
-# Main processing loop....
+# Main processing looplt....
       
   for n, filename in enumerate(in_filenames):
 
-    fig, axes = P.subplots(1, 2, sharey=True, figsize=(15,6))
-  
+    if options.plot2:
+        print("\n Only Reflectivity and Velocity plotted\n")
+        fig, axes = plt.subplots(1, 2, sharey=True, figsize=(15., 7.5))
+        axes = np.reshape(axes, (1,2))
+    else:
+        fig, axes = plt.subplots(2, 3, sharey=True, figsize=(22.5,15.))
+
     volume = pyart.io.read_nexrad_archive(filename)
+    
+    if options.raw:
+        print("\n No quality control will be done on data\n")
+        gatefilter = volume_prep(volume, do_QC = False, thres_vr_from_ref = False)
+    else:
+        gatefilter = volume_prep(volume, thres_vr_from_ref = _thres_vr_from_ref)
 
-# Filter based on masking, dBZ threshold, and invalid gates
-
-    gatefilter = pyart.correct.GateFilter(volume)
-    gatefilter.exclude_invalid('velocity')
-    gatefilter.exclude_invalid('reflectivity')
-    gatefilter.exclude_masked('reflectivity')
-    gatefilter.exclude_below('reflectivity', _min_dbz)
-
-#   z_want=np.linspace(500, 10500, 101)
-#   u_mean, v_mean = vad.VAD(volume, z_want)
-#   
-#   print u_mean, v_mean
-
-  # unfolding can fail if the data are not written quite write - instead of quiting, try to unfold with region method
+  # unfolding can fail, instead of quiting, try to unfold with region method
+  
     if unfold_type == None:
         vr_field = "velocity"
         vr_label = "Radial Velocity"
-
     else:
         try:
-            gatefilter = volume_prep(volume, unfold_type=unfold_type) 
+            print("\n Trying dealias_unwrap_phase unfolding\n")
+            gatefilter = velocity_unfold(volume, unfold_type=unfold_type, gatefilter=gatefilter) 
             vr_field = "unfolded velocity"
             vr_label = "Unfolded Radial Velocity"
         except:
+            print("\n ----> Phase unfolding method has failed!! Trying region unfolding method\n")
             try:
-                print("\n ----> Phase unfolding method has failed!! Trying region unfolding method\n")
-                gatefilter = volume_prep(volume, unfold_type="region")
+                unfold_type2 = "region"
+                if unfold_type == "region":    
+                    unfold_type2 = "phase"
+                gatefilter = velocity_unfold(volume, unfold_type=unfold_type2, gatefilter=gatefilter) 
                 vr_field = "unfolded velocity"
                 vr_label = "Unfolded Radial Velocity"
             except:
@@ -400,10 +461,23 @@ if __name__ == "__main__":
                 vr_label = "Radial Velocity"
 
     outfile  = plot_ppi_map(volume, "reflectivity", level=options.level, vRange=_ref_scale, cmap=_ref_ctable, \
-                            ax=axes[0], var_label='Reflectivity', shape_env=shapefiles, zoom=options.zoom)
+                            ax=axes[0,0], var_label='Reflectivity', shape_env=shapefiles, zoom=options.zoom)
 
-    outfile  = plot_ppi_map(volume, vr_field, level=options.level, vRange=_vr_scale, cmap=_vr_ctable, ax=axes[1], 
+    outfile  = plot_ppi_map(volume, vr_field, level=options.level, vRange=_vr_scale, cmap=_vr_ctable, ax=axes[0,1], 
                             var_label=vr_label, shape_env=shapefiles, zoom=options.zoom)
+                            
+    if not options.plot2:
+        outfile  = plot_ppi_map(volume, "spectrum_width", level=options.level, vRange=[0,10], cmap=_ref_ctable,  
+                                ax=axes[0,2], var_label='Spectrum_Width', shape_env=shapefiles, zoom=options.zoom)
+
+        outfile  = plot_ppi_map(volume,'differential_reflectivity', level=options.level, vRange=[-5.,5.], cmap=_ref_ctable, 
+                                ax=axes[1,0], var_label='Z-dR', shape_env=shapefiles, zoom=options.zoom)
+
+        outfile  = plot_ppi_map(volume,'cross_correlation_ratio', level=options.level, vRange=[0.,1.], cmap=_vr_ctable, 
+                                ax=axes[1,1], var_label='RHO_H-V', shape_env=shapefiles, zoom=options.zoom)
+
+        outfile  = plot_ppi_map(volume,'differential_phase', level=options.level, vRange=[0.,360.], cmap=_vr_ctable, 
+                                ax=axes[1,2], var_label='KDP', shape_env=shapefiles, zoom=options.zoom)
 
     fig.subplots_adjust(left=0.06, right=0.90, top=0.90, bottom=0.1, wspace=0.35)
     
@@ -411,7 +485,7 @@ if __name__ == "__main__":
   
     print("\n Saving file:  %s.png" % (outfile))
 
-    P.savefig("%s.%s" % (outfile, _file_type), format=_file_type, dpi=300)
+    plt.savefig("%s.%s" % (outfile, _file_type), format=_file_type, dpi=300)
 
     if options.interactive:
-        P.show()
+        plt.show()
