@@ -477,7 +477,7 @@ if __name__ == "__main__":
                                 ax=axes[1,1], var_label='RHO_H-V', shape_env=shapefiles, zoom=options.zoom)
 
         outfile  = plot_ppi_map(volume,'differential_phase', level=options.level, vRange=[0.,360.], cmap=_vr_ctable, 
-                                ax=axes[1,2], var_label='KDP', shape_env=shapefiles, zoom=options.zoom)
+                                ax=axes[1,2], var_label='PHI-DP', shape_env=shapefiles, zoom=options.zoom)
 
     fig.subplots_adjust(left=0.06, right=0.90, top=0.90, bottom=0.1, wspace=0.35)
     
