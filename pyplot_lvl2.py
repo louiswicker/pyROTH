@@ -64,20 +64,17 @@ debug = False
 
 def volume_prep(radar, do_QC = True, thres_vr_from_ref = True):
 
-# dealing with split cuts is a pain in the ass....here is my way to fix things....
+# dealing with split cuts is a pain in the ass....create a lookup table to connect sweeps
 
-split_cut = True
+LookUp = []
 iter_obj = radar.iter_elevation()
 for n, elev in enumerate(iter_obj):
-    if n < 4:
-        if elev.shape[0] != 720:
-            split_cut = False
-
+    if elev.shape[0] == 720:
+        if np.mod(n,2) == 0:
+            LookUp.append((n, n+1))
     else:
-       break
+        LookUp.append((n,n))
 
-# Copy "good" VR data
-          
 # Compute max gate to be used...
 
   max_range_gate = np.abs(radar.range['data'] - _max_range).argmin()
