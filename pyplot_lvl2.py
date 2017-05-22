@@ -60,6 +60,67 @@ _file_type = "png"
 debug = False
 
 ########################################################################
+# Texture defines a std deviation for a rolling window of length=LEN
+
+def texture(input, len=9):
+    
+    radius = len/2
+    
+    def rolling_window(a, window):
+        shape = a.shape[:-1] + (a.shape[-1] - window + 1, window)
+        strides = a.strides + (a.strides[-1],)
+        return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
+    
+    i2     = np.where(input.mask == True, np.nan, input)
+    std    = np.zeros(i2.shape)
+    kernel = np.ones((len,))/np.float(len)
+    c1     = scipy.ndimage.filters.convolve1d(i2,    kernel, mode='nearest', origin=-radius)
+    c2     = scipy.ndimage.filters.convolve1d(i2*i2, kernel, mode='nearest', origin=-radius)
+    std[len/2:-len/2+1] = ((c2 - c1*c1)**.5)[len-1:]
+
+    return np.ma.array(std, mask=np.isnan(std))
+
+########################################################################
+# Trap4 point
+
+def trap4point( input, x1, x2, x3, x4):
+
+#  abort for poor membership functions
+    if (x2-x1) < 0 || (x3-x2) < 0 || (x4-x3) < 0 ):
+        return 0;
+
+# more error checking
+
+    if not assert(x1<=x2)
+        raise AssertionError()
+
+    if not assert(x2<=x3)
+        raise AssertionError()
+
+    if not assert(x3<=x4)
+        raise AssertionError()
+
+    if input >= x2 && input <= x3:
+        return 1.0
+
+    if input <= x1:
+        return 0.0
+
+    if input >= x4:
+        return 0.0
+
+    if input > x1 && input < x2:
+        return (input-x1) / (x2-x1)
+
+    if input > x3 && input < x4:
+        return (x4-input)/(x4-x3)
+
+    print("\n  Trap4:  Problem with trapazoid calculation:")
+    print("input: %f  x1: %f  x2 :%f  x3 :%f  x4 :%f " % (input, x1, x2, x3, x4))
+    sys.exit(-1)
+
+
+########################################################################
 # Volume Prep:  QC and field-based thresholding
 
 def volume_prep(radar, do_QC = True, thres_vr_from_ref = True):
