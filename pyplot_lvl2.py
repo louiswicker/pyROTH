@@ -8,7 +8,6 @@ import sys
 import glob
 from optparse import OptionParser
 import os
-import ctables
 import time as timeit
 
 import warnings
@@ -39,8 +38,8 @@ _ref_scale = (0.,74.)
 _vr_scale  = (-40.,40.)
 
 # Colortables
-_ref_ctable = ctables.NWSRef
-_vr_ctable  = ctables.Carbone42
+_ref_ctable = pyart.graph.cm.NWSRef
+_vr_ctable  = pyart.graph.cm.Carbone42
 
 # Range rings in km
 _plot_RangeRings = True
@@ -58,6 +57,8 @@ _file_type = "png"
 
 # this turns on some timing info
 debug = False
+
+_verbose_QC = False
 
 ########################################################################
 # Texture defines a std deviation for a rolling window of length=LEN
@@ -127,14 +128,19 @@ def volume_prep(radar, do_QC = True, thres_vr_from_ref = True):
 
 # dealing with split cuts is a pain in the ass....create a lookup table to connect sweeps
 
-LookUp = []
-iter_obj = radar.iter_elevation()
-for n, elev in enumerate(iter_obj):
-    if elev.shape[0] == 720:
-        if np.mod(n,2) == 0:
-            LookUp.append((n, n+1))
-    else:
-        LookUp.append((n,n))
+  LookUp = []
+  elist = [x.shape[0] for x in radar.iter_elevation()]
+  n = 0
+  while n < len(elist)-1:
+#       print n, len(elist), elist[n], elist[n+1]
+      if elist[n] == 720 and elist[n+1] == 720:
+          LookUp.append((n, n+1))
+          n += 2
+      if elist[n] == 360:
+          LookUp.append((n, n))
+          n += 1
+          
+#   print LookUp
 
 # Compute max gate to be used...
 
@@ -156,46 +162,51 @@ for n, elev in enumerate(iter_obj):
   gatefilter.exclude_invalid('reflectivity')
   gatefilter.exclude_masked('reflectivity')
 
-  ref_mask = (radar.fields['reflectivity']['data'] < _min_dbz)
-  
   if do_QC == False:
       if thres_vr_from_ref:
-          radar.fields['velocity']['data'].mask = (((radar.fields['velocity']['data'].mask | ref_mask) ) )
+          for n,m in LookUp:
+              ref_mask = (radar.get_field(n, 'reflectivity').data < _min_dbz)
+              radar.get_field(n, 'velocity').mask = (((radar.get_field(n, 'velocity').mask | ref_mask) ) )
+
       return gatefilter
       
   else:
-      spw_mask = (radar.fields['spectrum_width']['data'] > _spw_filter)
-
-      kdp_mask = (radar.fields['cross_correlation_ratio']['data'] < _rhv_filter )
-      kdp_mask2 = (radar.fields['cross_correlation_ratio']['data'] < 0.7 )
-
-      zdr_mask = (radar.fields['differential_reflectivity']['data'] > _zdr_filter)
   
-      print("\n Volume_prep:  ZdR   > thres:  %f  Number of gates removed:  %d" %( _zdr_filter, np.sum(zdr_mask == True)))
-      print("\n Volume_prep:  RHOHV < thres:  %f  Number of gates removed:  %d" %( _rhv_filter, np.sum(kdp_mask == True)))
-      print("\n Volume_prep:  SPWTH > thres:  %f  Number of gates removed:  %d" %( _spw_filter, np.sum(spw_mask == True)))
-    
-      print("\n Volume_prep:  Number of valid DBZ gates before dual-pol masking:  %d  " % 
-                np.sum(radar.fields['reflectivity']['data'].mask == False))
-
-      print("\n Volume_prep:  Number of valid Velocity gates before dual-pol masking:  %d  " % 
-                np.sum(radar.fields['velocity']['data'].mask == False))
-   
-      radar.fields['reflectivity']['data'].mask = (((radar.fields['reflectivity']['data'].mask) | kdp_mask) | zdr_mask | ref_mask)
-      radar.fields['velocity']['data'].mask     = (((radar.fields['velocity']['data'].mask | spw_mask) ) )
-
-      if thres_vr_from_ref:
-          radar.fields['velocity']['data'].mask = (((radar.fields['velocity']['data'].mask | ref_mask) ) )
+      for n, m in LookUp:
       
-      print("\n Volume_prep:  Number of valid DBZ gates after dual-pol masking:  %d  " % 
-                np.sum(radar.fields['reflectivity']['data'].mask == False))
+          spw_mask  = (radar.get_field(m, 'spectrum_width').data > _spw_filter)
+          ccr_mask  = (radar.get_field(n, 'cross_correlation_ratio').data < _rhv_filter )
+          zdr_mask  = (radar.get_field(n, 'differential_reflectivity').data > _zdr_filter)
+          ref_mask  = (radar.get_field(n, 'reflectivity').data < _min_dbz)
 
-      print("\n Volume_prep:  Number of valid Velocity gates after spectrum width masking:  %d \n" % 
-                np.sum(radar.fields['velocity']['data'].mask == False))
+          if _verbose_QC: 
+              print("\n Volume_prep:  ZdR   > thres:  %f  Number of gates removed:  %d" %( _zdr_filter, np.sum(zdr_mask == True)))
+              print("\n Volume_prep:  RHOHV < thres:  %f  Number of gates removed:  %d" %( _rhv_filter, np.sum(ccr_mask == True)))
+              print("\n Volume_prep:  SPWTH > thres:  %f  Number of gates removed:  %d" %( _spw_filter, np.sum(spw_mask == True)))   
+              print("\n Volume_prep:  Number of valid DBZ gates before dual-pol masking:  %d  " % 
+                        np.sum(radar.get_field(n, 'reflectivity').mask == False))
+              print("\n Volume_prep:  Number of valid Velocity gates before dual-pol masking:  %d  " % 
+                        np.sum(radar.get_field(n, 'velocity').mask == False))
+   
+          radar.get_field(n, 'reflectivity').mask = (((radar.get_field(n, 'reflectivity').mask) | ccr_mask) | zdr_mask | ref_mask)
+          radar.get_field(m, 'velocity').mask     = (((radar.get_field(m, 'velocity').mask | spw_mask) | ccr_mask ) )
+
+          if thres_vr_from_ref:
+              radar.get_field(m, 'velocity').mask = (((radar.get_field(m, 'velocity').mask | ref_mask) ) )
+
+          if _verbose_QC: 
+              print("\n Volume_prep:  Number of valid DBZ gates after dual-pol masking:  %d  " % 
+                        np.sum(radar.get_field(n, 'reflectivity').mask == False))
+              print("\n Volume_prep:  Number of valid Velocity gates after spectrum width masking:  %d \n" % 
+                        np.sum(radar.get_field(m, 'velocity').mask == False))
   
 # pyart.correct.despeckle.despeckle_field(radar, 'velocity', threshold=-100, size=10, gatefilter=gatefilter, delta=5.0)
-#pyart.correct.despeckle.despeckle_field(radar, 'reflectivity', threshold=-100, size=100, gatefilter=gatefilter, delta=5.0)
+# pyart.correct.despeckle.despeckle_field(radar, 'reflectivity', threshold=-100, size=100, gatefilter=gatefilter, delta=5.0)
 
+# add Lookup table to radar obj
+
+      radar.sweep_table = LookUp
+      
       return gatefilter
 
 ########################################################################
@@ -341,19 +352,15 @@ def create_ppi_map(radar, xr, yr, plot_range_rings=_plot_RangeRings, ax=None, **
    return map, xmap, ymap, radar_x, radar_y
    
 #############################################################################################
-def plot_ppi_map(radar, field, level = 0, cmap=ctables.Carbone42, vRange=None, var_label = None, \
+def plot_ppi_map(radar, field, level = 0, cmap=pyart.graph.cm.Carbone42, vRange=None, var_label = None, \
                  plot_range_rings=True, ax=None, zoom = None, **kwargs):
                  
-   start = radar.get_start(level)
-   end   = radar.get_end(level) + 1
-   data  = radar.fields[field]['data'][start:end]
+   data = radar.get_field(level, field)
    
-# Fix super-res blank velocity field to next scan level...
+# Fix super-res blank velocity field to next scan level...should use the lookUp table....
 
    if np.sum(data.mask == True) == data.size:
-      start = radar.get_start(level+1)
-      end   = radar.get_end(level+1) + 1
-      data  = radar.fields[field]['data'][start:end]
+      data  = radar.get_field(level+1, field)
 
    xr    = radar.gate_x['data'][start:end] 
    yr    = radar.gate_y['data'][start:end] 
@@ -371,7 +378,7 @@ def plot_ppi_map(radar, field, level = 0, cmap=ctables.Carbone42, vRange=None, v
       ax.set_ylim(radar_y+_y_plot_range[0],radar_y+_y_plot_range[1])
 
    time = radar.time['units'].split(" ")[2]
-#time = time.replace("-","_")
+#  time = time.replace("-","_")
    time = time.replace("T"," ")
    el   = radar.elevation['data'][level]
    
