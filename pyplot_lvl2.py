@@ -9,6 +9,7 @@ import glob
 from optparse import OptionParser
 import os
 import time as timeit
+import scipy
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -84,47 +85,147 @@ def texture(input, len=9):
 ########################################################################
 # Trap4 point
 
-def trap4point( input, x1, x2, x3, x4):
+def trap4point( input, y1, y2, y3, y4):
+
+    x1 = y1*np.ones(input.shape)
+
+    x2 = y2*np.ones(input.shape)
+
+    x3 = y3*np.ones(input.shape)
+
+    x4 = y4*np.ones(input.shape)
+
+# Need to get these implemented...
 
 #  abort for poor membership functions
-    if (x2-x1) < 0 || (x3-x2) < 0 || (x4-x3) < 0 ):
-        return 0;
+#     if (x2-x1) < 0 or (x3-x2) < 0 or (x4-x3) < 0:
+#         return 0
 
 # more error checking
 
-    if not assert(x1<=x2)
-        raise AssertionError()
+#     assert(x1<=x2)
 
-    if not assert(x2<=x3)
-        raise AssertionError()
+#     assert(x2<=x3)
 
-    if not assert(x3<=x4)
-        raise AssertionError()
+#     assert(x3<=x4)
 
-    if input >= x2 && input <= x3:
-        return 1.0
+    output = np.ma.zeros(input.shape)
+    
+    mask1 = np.logical_and((input >= x2), (input <= x3))   
+    output = np.where(mask1, 1.0, 0.0)
 
-    if input <= x1:
-        return 0.0
+    mask2 = np.logical_or((input < x1), (input > x4))
+    output = np.where(mask2, 0.0, 0.0)
 
-    if input >= x4:
-        return 0.0
+    mask3 = np.logical_and((input > x2), (input < x3))
+    tmp = (input-x1) / (x2-x1)
+    output = np.where(mask3, tmp, 0.0)
 
-    if input > x1 && input < x2:
-        return (input-x1) / (x2-x1)
-
-    if input > x3 && input < x4:
-        return (x4-input)/(x4-x3)
+    mask4 = np.logical_and(input > x3, (input < x4))
+    tmp = (x4-input) /  (x4-x3)
+    output = np.where(mask4, tmp, 0.0)
+     
+    return output
 
     print("\n  Trap4:  Problem with trapazoid calculation:")
-    print("input: %f  x1: %f  x2 :%f  x3 :%f  x4 :%f " % (input, x1, x2, x3, x4))
+    print("input: %f  x1: %f  x2 :%f  x3 :%f  x4 :%f " % (input, y1, y2, y3, y4))
     sys.exit(-1)
+
+########################################################################
+# MetSignal:  Implementation of Krause's 2016 JTech QC algorithm in 1D
+
+def MetSignal(radar, sweep = 0, v_sweep = None):
+
+    dbz_weight     = 2.0
+    rhv_weight     = 1.0
+    vel_weight     = 1.0
+    std_zdr_weight = 2.0
+    std_phi_weight = 2.0
+    std_rhv_weight = 1.0
+    FLT_MAX        = 1.0e8
+    met_threshold  = 80.
+    
+    if v_sweep == None:
+         v_sweep = radar.sweep_table[sweep][1]
+    
+    dbz = radar.get_field(sweep, 'reflectivity')
+    zdr = radar.get_field(sweep, 'differential_reflectivity')
+    phi = radar.get_field(sweep, 'differential_phase')
+    rhv = radar.get_field(sweep, 'cross_correlation_ratio')
+    vel = radar.get_field(v_sweep, 'velocity')
+    
+    metsignal = -10.0*np.ones(dbz.shape)
+    
+# Compute QC along each ray   
+
+    for na in np.arange(dbz.shape[0]):
+    
+# Calculate the std-deviation for texture mapping
+
+        std_phi = texture(phi[na])
+        std_zdr = texture(zdr[na])
+        std_rhv = texture(rhv[na])
+        
+#         print na, "PHI_STD: ", std_phi.max(), std_phi.min()
+#         print na, "ZDR_STD: ", std_zdr.max(), std_zdr.min()
+#         print na, "RHV_STD: ", std_rhv.max(), std_rhv.min()
+# 
+        signal_value    = np.zeros(dbz.shape[1])
+        signal_strength = np.zeros(dbz.shape[1]) 
+        weight          = np.zeros(dbz.shape[1]) 
+        sump            = np.zeros(dbz.shape[1], dtype=np.int) 
+        
+        signal_value = signal_value + dbz_weight*trap4point(dbz[na],10.0,30.0,FLT_MAX,FLT_MAX)
+        weight       = weight + np.where(dbz[na].mask == False, dbz_weight, 0.0)
+        sump         = sump + np.where(dbz[na].mask == False, 1, 0) 
+
+        signal_value = signal_value + rhv_weight*trap4point(rhv[na],0.75, 0.9,FLT_MAX,FLT_MAX)
+        weight       = weight + np.where(rhv[na].mask == False, rhv_weight, 0.0) 
+        sump         = sump + np.where(rhv[na].mask == False, 1, 0) 
+
+        signal_value = signal_value + 1.0 - vel_weight*trap4point(vel[na],-1.5, -1.0, 1.0, 1.5)
+        weight       = weight + np.where(vel[na].mask == False, vel_weight, 0.0) 
+        sump         = sump + np.where(vel[na].mask == False, 1, 0) 
+
+        signal_value = signal_value + std_phi_weight*trap4point(std_phi,0.0, 0.0, 10., 20.)
+        weight       = weight + np.where(std_phi.mask == False, std_phi_weight, 0.0) 
+        sump         = sump + np.where(std_phi.mask == False, 1, 0) 
+        
+        signal_value = signal_value + std_zdr_weight*trap4point(std_zdr,0.0, 0.0, 1., 2.)
+        weight       = weight + np.where(std_zdr.mask == False, std_zdr_weight, 0.0) 
+        sump         = sump + np.where(std_zdr.mask == False, 1, 0) 
+        
+        signal_value = signal_value + std_rhv_weight*trap4point(std_rhv,0.0, 0.0, 0.02, 0.04)
+        weight       = weight + np.where(std_rhv.mask == False, std_rhv_weight, 0.0) 
+        sump         = sump + np.where(std_rhv.mask == False, 1, 0) 
+
+# Locations with large amounts of Texture are non-meteorlogical while areas 
+# with moderate to low amounts of texture are meteorlogical
+
+        metsignal[na,:] = np.where(sump >= 4, np.floor(100.*signal_value/weight), -10)
+    
+# Hardlimits:  Asd some hard thresholds
+
+# RhoHV < 0.65
+
+    mask = np.logical_and((rhv < 0.65), (metsignal >= met_threshold))   
+    metsignal = np.where(mask, -5.0, metsignal)
+
+# Zdr < -4.5
+    mask = np.logical_and((zdr  < -4.5), (metsignal >= met_threshold))   
+    metsignal = np.where(mask, -5.1, metsignal)
+
+# Zdr > 4.5
+    mask = np.logical_and((zdr > 4.5), (metsignal >= met_threshold))   
+    metsignal = np.where(mask, -5.2, metsignal)
+
+    return metsignal
 
 
 ########################################################################
 # Volume Prep:  QC and field-based thresholding
 
-def volume_prep(radar, do_QC = True, thres_vr_from_ref = True):
+def volume_prep(radar, QC_type = "Minimal", thres_vr_from_ref = True):
 
 # dealing with split cuts is a pain in the ass....create a lookup table to connect sweeps
 
@@ -132,7 +233,6 @@ def volume_prep(radar, do_QC = True, thres_vr_from_ref = True):
   elist = [x.shape[0] for x in radar.iter_elevation()]
   n = 0
   while n < len(elist)-1:
-#       print n, len(elist), elist[n], elist[n+1]
       if elist[n] == 720 and elist[n+1] == 720:
           LookUp.append((n, n+1))
           n += 2
@@ -140,7 +240,9 @@ def volume_prep(radar, do_QC = True, thres_vr_from_ref = True):
           LookUp.append((n, n))
           n += 1
           
-#   print LookUp
+# add Lookup table to radar obj
+
+      radar.sweep_table = LookUp
 
 # Compute max gate to be used...
 
@@ -161,8 +263,11 @@ def volume_prep(radar, do_QC = True, thres_vr_from_ref = True):
   gatefilter.exclude_invalid('velocity')
   gatefilter.exclude_invalid('reflectivity')
   gatefilter.exclude_masked('reflectivity')
+  
+  if QC_type == "None":
+      return gatefilter
 
-  if do_QC == False:
+  if QC_type == "Minimal":
       if thres_vr_from_ref:
           for n,m in LookUp:
               ref_mask = (radar.get_field(n, 'reflectivity').data < _min_dbz)
@@ -170,7 +275,20 @@ def volume_prep(radar, do_QC = True, thres_vr_from_ref = True):
 
       return gatefilter
       
-  else:
+  elif QC_type == "MetSignal":
+  
+      for n, m in LookUp:
+          print n, m
+          metsignal = MetSignal(radar, sweep=n, v_sweep=n)
+          print metsignal.shape, radar.get_field(m, 'spectrum_width').data.shape
+          metsig_mask = (metsignal > 70.)
+          radar.get_field(n, 'reflectivity').mask = (radar.get_field(n, 'reflectivity').mask | metsig_mask)                      
+          radar.get_field(m, 'velocity').mask     = (radar.get_field(m, 'velocity').mask | metsig_mask) 
+          radar.get_field(m, 'spectrum_width').data[...] = metsignal[...]
+          
+      return gatefilter
+       
+  else:  #This is my algorithm I wipped together...
   
       for n, m in LookUp:
       
@@ -203,9 +321,7 @@ def volume_prep(radar, do_QC = True, thres_vr_from_ref = True):
 # pyart.correct.despeckle.despeckle_field(radar, 'velocity', threshold=-100, size=10, gatefilter=gatefilter, delta=5.0)
 # pyart.correct.despeckle.despeckle_field(radar, 'reflectivity', threshold=-100, size=100, gatefilter=gatefilter, delta=5.0)
 
-# add Lookup table to radar obj
 
-      radar.sweep_table = LookUp
       
       return gatefilter
 
@@ -355,12 +471,16 @@ def create_ppi_map(radar, xr, yr, plot_range_rings=_plot_RangeRings, ax=None, **
 def plot_ppi_map(radar, field, level = 0, cmap=pyart.graph.cm.Carbone42, vRange=None, var_label = None, \
                  plot_range_rings=True, ax=None, zoom = None, **kwargs):
                  
-   data = radar.get_field(level, field)
+   start = radar.get_start(level)
+   end   = radar.get_end(level) + 1
+   data  = radar.fields[field]['data'][start:end]
    
-# Fix super-res blank velocity field to next scan level...should use the lookUp table....
+# Fix super-res blank velocity field to next scan level...
 
    if np.sum(data.mask == True) == data.size:
-      data  = radar.get_field(level+1, field)
+      start = radar.get_start(level+1)
+      end   = radar.get_end(level+1) + 1
+      data  = radar.fields[field]['data'][start:end]
 
    xr    = radar.gate_x['data'][start:end] 
    yr    = radar.gate_y['data'][start:end] 
@@ -426,9 +546,9 @@ if __name__ == "__main__":
   parser.add_option("-i", "--interactive", dest="interactive", default=False,  action="store_true",     \
                      help = "Boolean flag to plot image to screen")  
  
-  parser.add_option("-r", "--raw", dest="raw", default=False,  action="store_true",     \
-                     help = "Boolean flag to not perform QC on reflectivity or velocity")  
- 
+  parser.add_option("-q", "--qc", dest="qc", default="Minimal",  type="string",     \
+                     help = "Type of QC corrections on reflectivity or velocity.  Valid:  None, Minimal, MetSignal, A1")  
+
   parser.add_option(     "--plot2", dest="plot2", default=False,  action="store_true",     \
                      help = "Boolean flag which will only plot reflectivity and velocity, \
                              default is all six LvL2 fields")  
@@ -508,11 +628,12 @@ if __name__ == "__main__":
 
     volume = pyart.io.read_nexrad_archive(filename)
     
-    if options.raw:
+    if options.qc == "None":
         print("\n No quality control will be done on data\n")
-        gatefilter = volume_prep(volume, do_QC = False, thres_vr_from_ref = False)
+        gatefilter = volume_prep(volume, QC_type = options.qc, thres_vr_from_ref = False)
     else:
-        gatefilter = volume_prep(volume, thres_vr_from_ref = _thres_vr_from_ref)
+        print("\n QC type:  %s \n" % options.qc)
+        gatefilter = volume_prep(volume, QC_type = options.qc, thres_vr_from_ref = _thres_vr_from_ref)
 
   # unfolding can fail, instead of quiting, try to unfold with region method
   
@@ -546,8 +667,12 @@ if __name__ == "__main__":
                             var_label=vr_label, shape_env=shapefiles, zoom=options.zoom)
                             
     if not options.plot2:
-        outfile  = plot_ppi_map(volume, "spectrum_width", level=options.level, vRange=[0,10], cmap=_ref_ctable,  
+        if options.qc != "MetSignal":
+            outfile  = plot_ppi_map(volume, "spectrum_width", level=options.level, vRange=[0,10], cmap=_ref_ctable,  
                                 ax=axes[0,2], var_label='Spectrum_Width', shape_env=shapefiles, zoom=options.zoom)
+        else:
+            outfile  = plot_ppi_map(volume, "spectrum_width", level=options.level, vRange=[-10,100], cmap=_ref_ctable,  
+                                ax=axes[0,2], var_label='MetSignalQC', shape_env=shapefiles, zoom=options.zoom)
 
         outfile  = plot_ppi_map(volume,'differential_reflectivity', level=options.level, vRange=[-5.,5.], cmap=_ref_ctable, 
                                 ax=axes[1,0], var_label='Z-dR', shape_env=shapefiles, zoom=options.zoom)
