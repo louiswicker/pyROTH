@@ -255,7 +255,19 @@ def volume_prep(radar, QC_type = "Minimal", thres_vr_from_ref = True):
   radar.fields['spectrum_width']['data'][:,max_range_gate:] = np.ma.masked
   radar.fields['cross_correlation_ratio']['data'][:,max_range_gate:] = np.ma.masked
   radar.fields['differential_reflectivity']['data'][:,max_range_gate:] = np.ma.masked
-  radar.fields['cross_correlation_ratio']['data'][:,max_range_gate:] = np.ma.masked
+  radar.fields['differential_phase']['data'][:,max_range_gate:] = np.ma.masked
+
+# Unfold phiDP
+
+  unfold_phase, sob_kdp = pyart.correct.phase_proc_lp(radar, 0.0)
+
+  radar.add_field_like('differential_phase', 
+                       'differential_phase_unfolded', 
+                        unfold_phase, replace_existing = True)
+
+  radar.add_field_like('differential_phase', 
+                       'kdp', 
+                       sob_kdp, replace_existing = True)
 
 # Filter based on masking, dBZ threshold, and invalid gates
 
@@ -680,7 +692,7 @@ if __name__ == "__main__":
         outfile  = plot_ppi_map(volume,'cross_correlation_ratio', level=options.level, vRange=[0.,1.], cmap=_vr_ctable, 
                                 ax=axes[1,1], var_label='RHO_H-V', shape_env=shapefiles, zoom=options.zoom)
 
-        outfile  = plot_ppi_map(volume,'differential_phase', level=options.level, vRange=[0.,360.], cmap=_vr_ctable, 
+        outfile  = plot_ppi_map(volume,'differential_phasei_unfolded', level=options.level, vRange=[0.,360.], cmap=_vr_ctable, 
                                 ax=axes[1,2], var_label='PHI-DP', shape_env=shapefiles, zoom=options.zoom)
 
     fig.subplots_adjust(left=0.06, right=0.90, top=0.90, bottom=0.1, wspace=0.35)
