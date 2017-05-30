@@ -12,7 +12,7 @@ import time as timeit
 import scipy
 
 import warnings
-warnings.filterwarnings("ignore")
+#warnings.filterwarnings("ignore")
 
 
 from mpl_toolkits.basemap import Basemap
@@ -61,6 +61,68 @@ debug = False
 
 _verbose_QC = False
 
+########################################################################
+def fill_nan(data):
+    '''
+    interpolate to fill nan values
+    '''
+    print "fillnan"
+    
+#     inds = np.arange(A.shape[0])
+#     good = np.where(np.isfinite(A))
+#     print A
+#     if len(good[0]) == 0:
+#         return np.nan_to_num(A)
+#     f = scipy.interpolate.interp1d(inds[good], A[good], bounds_error=False)
+#     B = np.where(np.isfinite(A), A, f(inds))
+#     print B
+
+    bad_indexes = np.isnan(data)
+    good_indexes = np.logical_not(bad_indexes)
+    good_data = data[good_indexes]
+    interpolated = np.interp(bad_indexes.nonzero()[0], good_indexes.nonzero()[0], good_data)
+    data[bad_indexes] = interpolated
+
+    return data
+    
+#return B
+    
+########################################################################
+def my_dealias_unwrap_1d(vdata, nyquist_vel):
+    """ Dealias using 1D phase unwrapping (ray-by-ray) """
+    
+    print "ready to go"
+
+    print vdata.shape
+    data = np.empty_like(vdata)
+    
+    
+    for j, aray in enumerate(vdata):
+        # extract ray and scale to phase units
+        
+        ray = fill_nan(aray)
+        wrapped = (ray * np.pi / nyquist_vel)
+
+        # perform unwrapping
+#       wrapped = np.require(scaled_ray, np.float64, ['C'])
+        unwrapped = np.empty_like(wrapped, dtype=np.float64, order='C')
+#       unwrap_1d(wrapped, unwrapped)
+
+        unwrapped[0] = wrapped[0]
+        period = 0
+        for i in range(1, wrapped.shape[0]):
+            difference = wrapped[i] - wrapped[i - 1]
+            if difference > np.pi:
+                periods -= 1
+            elif difference < -np.pi:
+                periods += 1
+            unwrapped[i] = wrapped[i] + 2 * mp.pi * periods
+            
+        # scale back into velocity units and store
+        data[j] = unwrapped * nyquist_vel / np.pi
+        
+    return data
+    
 ########################################################################
 # Texture defines a std deviation for a rolling window of length=LEN
 
@@ -259,16 +321,8 @@ def volume_prep(radar, QC_type = "Minimal", thres_vr_from_ref = True):
 
 # Unfold phiDP
 
-  unfold_phase, sob_kdp = pyart.correct.phase_proc_lp(radar, 0.0)
-
-  radar.add_field_like('differential_phase', 
-                       'differential_phase_unfolded', 
-                        unfold_phase, replace_existing = True)
-
-  radar.add_field_like('differential_phase', 
-                       'kdp', 
-                       sob_kdp, replace_existing = True)
-
+# unfold_phase, sob_kdp = pyart.correct.phase_proc_lp(radar, 0.0)
+#
 # Filter based on masking, dBZ threshold, and invalid gates
 
   gatefilter = pyart.correct.GateFilter(radar)
@@ -333,8 +387,6 @@ def volume_prep(radar, QC_type = "Minimal", thres_vr_from_ref = True):
 # pyart.correct.despeckle.despeckle_field(radar, 'velocity', threshold=-100, size=10, gatefilter=gatefilter, delta=5.0)
 # pyart.correct.despeckle.despeckle_field(radar, 'reflectivity', threshold=-100, size=100, gatefilter=gatefilter, delta=5.0)
 
-
-      
       return gatefilter
 
 ########################################################################
@@ -344,31 +396,66 @@ def velocity_unfold(radar, unfold_type="phase", gatefilter=None):
 
 # Dealias the velocity data
 
-  if unfold_type == "phase":
-    dealiased_radar = pyart.correct.dealias_unwrap_phase(radar, unwrap_unit='sweep', 
-                                   nyquist_vel=None, check_nyquist_uniform=True, 
-                                   gatefilter=gatefilter, rays_wrap_around=None, 
-                                   keep_original=False, set_limits=True, 
-                                   vel_field='velocity', corr_vel_field=None, 
-                                   skip_checks=False)
-                                   
-    radar.add_field('unfolded velocity', dealiased_radar)
-    
-    return True
-                                   
+    if unfold_type == "phase":
+        
+        nyquist_vel = np.zeros((radar.nsweeps,))
+        nyq = radar.instrument_parameters['nyquist_velocity']['data'][:]
 
-  if unfold_type == "region":
-    dealiased_radar = pyart.correct.dealias_region_based(radar, interval_splits=3, 
+        rays_wrap_around = None
+        
+# exclude masked and invalid velocity gates
+# 
+#         gatefilter.exclude_masked('velocity')
+#         gatefilter.exclude_invalid('velocity')
+#         gfilter = gatefilter.gate_excluded
+# 
+# raw vel. data possibly with masking
+
+        raw_vdata = radar.fields['velocity']['data']
+        vdata     = raw_vdata.view(np.ndarray)      # mask removed
+        data      = np.zeros_like(vdata)
+
+        print data.shape, raw_vdata.shape, type(data)
+
+# extract sweep and scale to phase units
+
+        for nsweep, sweep_slice in enumerate(radar.iter_slice()):
+
+            if (np.sum(raw_vdata.mask[sweep_slice] == True) == raw_vdata[sweep_slice].size):
+                
+                print('\n no data, skipping sweep')
+            
+            else:
+            
+                sweep_nyquist_vel = nyq[sweep_slice].min()
+
+                print nsweep, sweep_nyquist_vel
+
+                data[sweep_slice, :] = my_dealias_unwrap_1d(raw_vdata[sweep_slice], sweep_nyquist_vel)
+# 
+#     #   dealiased_radar = pyart.correct.dealias_unwrap_phase(radar, unwrap_unit='ray', 
+#     #                                  nyquist_vel=None, check_nyquist_uniform=False, 
+#     #                                  gatefilter=gatefilter, rays_wrap_around=None, 
+#     #                                  keep_original=False, set_limits=True, 
+#     #                                  vel_field='velocity', corr_vel_field=None, 
+#     #                                  skip_checks=False)
+# #                                  
+#         radar.add_field('unfolded velocity', data)
+#         return True
+#                                    
+# 
+    if unfold_type == "region":
+        dealiased_radar = pyart.correct.dealias_region_based(radar, interval_splits=3, 
                                    interval_limits=None, skip_between_rays=100, 
                                    skip_along_ray=100, centered=True, 
-                                   nyquist_vel=None, check_nyquist_uniform=True, 
+                                   nyquist_vel=sweep_nyquist, check_nyquist_uniform=False, 
                                    gatefilter=gatefilter, rays_wrap_around=None, 
                                    keep_original=False, set_limits=True, 
                                    vel_field='velocity', corr_vel_field=None)
      
-    radar.add_field('unfolded velocity', dealiased_radar)
+        radar.add_field('unfolded velocity', dealiased_radar)
 
-    return True
+        return True
     
 #  Must implement function to get sounding data or specify previously unfolded radar 
 #       volume to use PyART 4DD method. See PyART docs for more info.
@@ -389,7 +476,7 @@ def velocity_unfold(radar, unfold_type="phase", gatefilter=None):
 
 # If it gets here, there was a problem
 
-  return False
+    return False
 #===============================================================================
 def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, supress_ticks = True, 
               resolution='c',area_thresh = 10., shape_env = False, 
@@ -531,7 +618,7 @@ def plot_ppi_map(radar, field, level = 0, cmap=pyart.graph.cm.Carbone42, vRange=
 ########################################################################
 # Main function
 
-if __name__ == "__main__":
+def main():
 
   print ' ================================================================================'
   print ''
@@ -692,7 +779,7 @@ if __name__ == "__main__":
         outfile  = plot_ppi_map(volume,'cross_correlation_ratio', level=options.level, vRange=[0.,1.], cmap=_vr_ctable, 
                                 ax=axes[1,1], var_label='RHO_H-V', shape_env=shapefiles, zoom=options.zoom)
 
-        outfile  = plot_ppi_map(volume,'differential_phasei_unfolded', level=options.level, vRange=[0.,360.], cmap=_vr_ctable, 
+        outfile  = plot_ppi_map(volume,'differential_phase', level=options.level, vRange=[0.,360.], cmap=_vr_ctable, 
                                 ax=axes[1,2], var_label='PHI-DP', shape_env=shapefiles, zoom=options.zoom)
 
     fig.subplots_adjust(left=0.06, right=0.90, top=0.90, bottom=0.1, wspace=0.35)
@@ -705,3 +792,6 @@ if __name__ == "__main__":
 
     if options.interactive:
         plt.show()
+
+if __name__ == '__main__':
+    main()
