@@ -12,7 +12,7 @@ import time as timeit
 import scipy
 
 import warnings
-#warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore")
 
 
 from mpl_toolkits.basemap import Basemap
@@ -29,6 +29,8 @@ _shapefiles = None
 _level      = 0
 
 _thres_vr_from_ref = True
+_default_QC        = "Minimal"
+
 _min_dbz           = 10.
 _spw_filter        = 5.0
 _rhv_filter        = 0.90
@@ -57,72 +59,10 @@ _lon_lines    = False
 _file_type = "png"
 
 # this turns on some timing info
-debug = False
+_debug = False
 
 _verbose_QC = False
 
-########################################################################
-def fill_nan(data):
-    '''
-    interpolate to fill nan values
-    '''
-    print "fillnan"
-    
-#     inds = np.arange(A.shape[0])
-#     good = np.where(np.isfinite(A))
-#     print A
-#     if len(good[0]) == 0:
-#         return np.nan_to_num(A)
-#     f = scipy.interpolate.interp1d(inds[good], A[good], bounds_error=False)
-#     B = np.where(np.isfinite(A), A, f(inds))
-#     print B
-
-    bad_indexes = np.isnan(data)
-    good_indexes = np.logical_not(bad_indexes)
-    good_data = data[good_indexes]
-    interpolated = np.interp(bad_indexes.nonzero()[0], good_indexes.nonzero()[0], good_data)
-    data[bad_indexes] = interpolated
-
-    return data
-    
-#return B
-    
-########################################################################
-def my_dealias_unwrap_1d(vdata, nyquist_vel):
-    """ Dealias using 1D phase unwrapping (ray-by-ray) """
-    
-    print "ready to go"
-
-    print vdata.shape
-    data = np.empty_like(vdata)
-    
-    
-    for j, aray in enumerate(vdata):
-        # extract ray and scale to phase units
-        
-        ray = fill_nan(aray)
-        wrapped = (ray * np.pi / nyquist_vel)
-
-        # perform unwrapping
-#       wrapped = np.require(scaled_ray, np.float64, ['C'])
-        unwrapped = np.empty_like(wrapped, dtype=np.float64, order='C')
-#       unwrap_1d(wrapped, unwrapped)
-
-        unwrapped[0] = wrapped[0]
-        period = 0
-        for i in range(1, wrapped.shape[0]):
-            difference = wrapped[i] - wrapped[i - 1]
-            if difference > np.pi:
-                periods -= 1
-            elif difference < -np.pi:
-                periods += 1
-            unwrapped[i] = wrapped[i] + 2 * mp.pi * periods
-            
-        # scale back into velocity units and store
-        data[j] = unwrapped * nyquist_vel / np.pi
-        
-    return data
-    
 ########################################################################
 # Texture defines a std deviation for a rolling window of length=LEN
 
@@ -228,10 +168,11 @@ def MetSignal(radar, sweep = 0, v_sweep = None):
         std_zdr = texture(zdr[na])
         std_rhv = texture(rhv[na])
         
-#         print na, "PHI_STD: ", std_phi.max(), std_phi.min()
-#         print na, "ZDR_STD: ", std_zdr.max(), std_zdr.min()
-#         print na, "RHV_STD: ", std_rhv.max(), std_rhv.min()
-# 
+        if _debug:
+            print na, "PHI_STD: ", std_phi.max(), std_phi.min()
+            print na, "ZDR_STD: ", std_zdr.max(), std_zdr.min()
+            print na, "RHV_STD: ", std_rhv.max(), std_rhv.min()
+
         signal_value    = np.zeros(dbz.shape[1])
         signal_strength = np.zeros(dbz.shape[1]) 
         weight          = np.zeros(dbz.shape[1]) 
@@ -287,9 +228,9 @@ def MetSignal(radar, sweep = 0, v_sweep = None):
 ########################################################################
 # Volume Prep:  QC and field-based thresholding
 
-def volume_prep(radar, QC_type = "Minimal", thres_vr_from_ref = True):
+def volume_prep(radar, QC_type = _default_QC, thres_vr_from_ref = _thres_vr_from_ref):
 
-# dealing with split cuts is a pain in the ass....create a lookup table to connect sweeps
+# Dealing with split cuts is a pain in the ass....create a lookup table to connect sweeps
 
   LookUp = []
   elist = [x.shape[0] for x in radar.iter_elevation()]
@@ -319,10 +260,6 @@ def volume_prep(radar, QC_type = "Minimal", thres_vr_from_ref = True):
   radar.fields['differential_reflectivity']['data'][:,max_range_gate:] = np.ma.masked
   radar.fields['differential_phase']['data'][:,max_range_gate:] = np.ma.masked
 
-# Unfold phiDP
-
-# unfold_phase, sob_kdp = pyart.correct.phase_proc_lp(radar, 0.0)
-#
 # Filter based on masking, dBZ threshold, and invalid gates
 
   gatefilter = pyart.correct.GateFilter(radar)
@@ -334,19 +271,20 @@ def volume_prep(radar, QC_type = "Minimal", thres_vr_from_ref = True):
       return gatefilter
 
   if QC_type == "Minimal":
-      if thres_vr_from_ref:
-          for n,m in LookUp:
-              ref_mask = (radar.get_field(n, 'reflectivity').data < _min_dbz)
-              radar.get_field(n, 'velocity').mask = (((radar.get_field(n, 'velocity').mask | ref_mask) ) )
+
+      for n, m in LookUp:
+          ref_mask = (radar.get_field(n, 'reflectivity').data < _min_dbz)
+          radar.get_field(n, 'reflectivity').mask = (radar.get_field(n, 'reflectivity').mask | ref_mask)                      
+          if thres_vr_from_ref:
+              radar.get_field(m, 'velocity').mask = (((radar.get_field(m, 'velocity').mask | ref_mask) ) )
 
       return gatefilter
       
-  elif QC_type == "MetSignal":
+  elif QC_type == "MetSignal" or QC_type[0:3] == "Met":
   
       for n, m in LookUp:
-          print n, m
+          print("\n Processing sweep: %d " % n)
           metsignal = MetSignal(radar, sweep=n, v_sweep=n)
-          print metsignal.shape, radar.get_field(m, 'spectrum_width').data.shape
           metsig_mask = (metsignal > 70.)
           radar.get_field(n, 'reflectivity').mask = (radar.get_field(n, 'reflectivity').mask | metsig_mask)                      
           radar.get_field(m, 'velocity').mask     = (radar.get_field(m, 'velocity').mask | metsig_mask) 
@@ -392,69 +330,61 @@ def volume_prep(radar, QC_type = "Minimal", thres_vr_from_ref = True):
 ########################################################################
 # Just a wrapper for velocity unfolding...
   
-def velocity_unfold(radar, unfold_type="phase", gatefilter=None):
+def velocity_unfold(radar, unfold_type="region", gatefilter=None):
+
+# In order to use pyART dealiasing, make sure the nyquist velocity on a sweep is constant 
+# Multi-PRF schemes are a problem because the information needed to dealias is NOT stored in the
+# Level-II file, as far as I know.
+#
+# For now, we are choosing the min nyquist.  This is a guess from looking at two cases, a supercell
+# and a strong MCV having a lot of folding.
+
+    for n, slice in enumerate(radar.iter_slice()):
+
+        nyq = radar.instrument_parameters['nyquist_velocity']['data'][slice]
+
+        if _verbose_QC or _debug:
+            print("Shape of nyquist:  %d" % nyq.shape)
+            print("Raw Max/Min of nyquist:  %f   %f" % (nyq.max(), nyq.min()))
+            print("Mean of nyquist:  %f" % nyq.mean())
+
+        radar.instrument_parameters['nyquist_velocity']['data'][slice] = nyq.min()
+
+        if _verbose_QC or _debug:
+            nyq = radar.instrument_parameters['nyquist_velocity']['data'][slice]
+            print("Corrected Max/Min of nyquist:  %f   %f" % (nyq.max(), nyq.min()))
 
 # Dealias the velocity data
 
     if unfold_type == "phase":
         
-        nyquist_vel = np.zeros((radar.nsweeps,))
-        nyq = radar.instrument_parameters['nyquist_velocity']['data'][:]
+        dealiased_vel = pyart.correct.dealias_unwrap_phase(radar, unwrap_unit='sweep', 
+                                                             nyquist_vel=None, 
+                                                             check_nyquist_uniform=True, 
+                                                             gatefilter=gatefilter, 
+                                                             rays_wrap_around=None, 
+                                                             keep_original=True, 
+                                                             set_limits=True, 
+                                                             vel_field=None, 
+                                                             corr_vel_field=None, 
+                                                             skip_checks=True)
 
-        rays_wrap_around = None
-        
-# exclude masked and invalid velocity gates
-# 
-#         gatefilter.exclude_masked('velocity')
-#         gatefilter.exclude_invalid('velocity')
-#         gfilter = gatefilter.gate_excluded
-# 
-# raw vel. data possibly with masking
+        radar.add_field('unfolded velocity', dealiased_vel)
+        return True
 
-        raw_vdata = radar.fields['velocity']['data']
-        vdata     = raw_vdata.view(np.ndarray)      # mask removed
-        data      = np.zeros_like(vdata)
-
-        print data.shape, raw_vdata.shape, type(data)
-
-# extract sweep and scale to phase units
-
-        for nsweep, sweep_slice in enumerate(radar.iter_slice()):
-
-            if (np.sum(raw_vdata.mask[sweep_slice] == True) == raw_vdata[sweep_slice].size):
-                
-                print('\n no data, skipping sweep')
-            
-            else:
-            
-                sweep_nyquist_vel = nyq[sweep_slice].min()
-
-                print nsweep, sweep_nyquist_vel
-
-                data[sweep_slice, :] = my_dealias_unwrap_1d(raw_vdata[sweep_slice], sweep_nyquist_vel)
-# 
-#     #   dealiased_radar = pyart.correct.dealias_unwrap_phase(radar, unwrap_unit='ray', 
-#     #                                  nyquist_vel=None, check_nyquist_uniform=False, 
-#     #                                  gatefilter=gatefilter, rays_wrap_around=None, 
-#     #                                  keep_original=False, set_limits=True, 
-#     #                                  vel_field='velocity', corr_vel_field=None, 
-#     #                                  skip_checks=False)
-# #                                  
-#         radar.add_field('unfolded velocity', data)
-#         return True
-#                                    
-# 
     if unfold_type == "region":
-        dealiased_radar = pyart.correct.dealias_region_based(radar, interval_splits=3, 
-                                   interval_limits=None, skip_between_rays=100, 
-                                   skip_along_ray=100, centered=True, 
-                                   nyquist_vel=sweep_nyquist, check_nyquist_uniform=False, 
-                                   gatefilter=gatefilter, rays_wrap_around=None, 
-                                   keep_original=False, set_limits=True, 
-                                   vel_field='velocity', corr_vel_field=None)
-     
-        radar.add_field('unfolded velocity', dealiased_radar)
 
+        dealiased_vel = pyart.correct.dealias_region_based(radar, nyquist_vel=None, 
+                                                             check_nyquist_uniform=True, 
+                                                             gatefilter=gatefilter, 
+                                                             rays_wrap_around=None, 
+                                                             keep_original=True, 
+                                                             set_limits=True, 
+                                                             vel_field=None, 
+                                                             corr_vel_field=None, 
+                                                             skip_checks=True)
+
+        radar.add_field('unfolded velocity', dealiased_vel)
         return True
     
 #  Must implement function to get sounding data or specify previously unfolded radar 
@@ -469,10 +399,6 @@ def velocity_unfold(radar, unfold_type="phase", gatefilter=None):
 #                              vel_field='velocity', corr_vel_field=None, 
 #                              last_vel_field=None, debug=False, 
 #                              max_shear=0.05, sign=1)
-
-#   copies reflectivity data to a variable that doesn't exceed the 8 character variable name limitation in OPAWS 
-#   radar.add_field_like('reflectivity', 'REF',
-#                        radar.fields['reflectivity']['data'].copy())
 
 # If it gets here, there was a problem
 
@@ -525,7 +451,7 @@ def mybasemap(glon, glat, r_lon, r_lat, scale = 1.0, supress_ticks = True,
 
    # pickle the class instance.
 
-   if debug:  print(timeit.clock()-tt,' secs to create original Basemap instance')
+   if _debug:  print(timeit.clock()-tt,' secs to create original Basemap instance')
 
    if pickle:
       pickle.dump(map,open('mymaplt.pickle','wb'),-1)
@@ -639,7 +565,7 @@ def main():
   parser.add_option("-p", "--plot",     dest="level",     default=0,  type="int", \
                     help = "Tilt index of NEXRAD sweep--> 0: 0.5 degrees")         
                  
-  parser.add_option("-u", "--unfold",    dest="unfold",    default="phase",  type="string", \
+  parser.add_option("-u", "--unfold",    dest="unfold",    default="region",  type="string", \
                     help = "dealiasing method to use (phase or region, default = phase)")
   
   parser.add_option("-i", "--interactive", dest="interactive", default=False,  action="store_true",     \
@@ -701,7 +627,7 @@ def main():
   if options.unfold == "phase":
       unfold_type = "phase"
   elif options.unfold == "region":
-      print "\n pyPlot_LvL2 dealias_region_based unfolding will be used\n"
+      print "\n plot_LVL2 dealias_region_based unfolding will be used\n"
       unfold_type = "region"
   else:
       print "\n ***** INVALID OR NO VELOCITY DEALIASING METHOD SPECIFIED *****"
@@ -759,10 +685,14 @@ def main():
                 vr_field = "velocity"
                 vr_label = "Radial Velocity"
 
-    outfile  = plot_ppi_map(volume, "reflectivity", level=options.level, vRange=_ref_scale, cmap=_ref_ctable, \
+    ref_level = volume.sweep_table[options.level][0]
+    vel_level = volume.sweep_table[options.level][1]
+    print ref_level, vel_level
+
+    outfile  = plot_ppi_map(volume, "reflectivity", level=ref_level, vRange=_ref_scale, cmap=_ref_ctable, \
                             ax=axes[0,0], var_label='Reflectivity', shape_env=shapefiles, zoom=options.zoom)
 
-    outfile  = plot_ppi_map(volume, vr_field, level=options.level, vRange=_vr_scale, cmap=_vr_ctable, ax=axes[0,1], 
+    outfile  = plot_ppi_map(volume, vr_field, level=vel_level, vRange=_vr_scale, cmap=_vr_ctable, ax=axes[0,1], 
                             var_label=vr_label, shape_env=shapefiles, zoom=options.zoom)
                             
     if not options.plot2:
