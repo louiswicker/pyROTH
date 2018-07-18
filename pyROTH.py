@@ -515,7 +515,6 @@ def write_DART_ascii(obs, filename=None, obs_error=None, zero_dbz_obtype=True):
       k = it.multi_index[0]
       j = it.multi_index[1]
       i = it.multi_index[2]
-      print i,j,k
       
       if data.mask[k,j,i] == True:   # bad values
           pass
@@ -1233,7 +1232,7 @@ if __name__ == "__main__":
    parser.add_option("-f", "--file",      dest="fname",     default=None,  type="string", \
                       help = "filename of NEXRAD level II volume to process")
                      
-   parser.add_option("-u", "--unfold",    dest="unfold",    default="phase",  type="string", \
+   parser.add_option("-u", "--unfold",    dest="unfold",    default="region",  type="string", \
                       help = "dealiasing method to use (phase or region, default = phase)")
                      
    parser.add_option("-w", "--write",     dest="write",   default=False, \
@@ -1284,10 +1283,10 @@ if __name__ == "__main__":
       
        else:
            in_filenames.append(os.path.abspath(options.fname))
-           strng = os.path.basename(in_filenames[0])[0:-3]
-           strng = strng[0:5] + "_" + strng[5:]
+           strng = os.path.basename(in_filenames[0]).split("_V06")[0]
+           strng = strng[0:4] + "_" + strng[4:]
            strng = os.path.join(options.out_dir, strng)
-           out_filenames.append(strng) 
+           out_filenames.append(strng)
 
    else:
        in_filenames = glob.glob("%s/*" % os.path.abspath(options.dname))
