@@ -22,9 +22,12 @@ from optparse import OptionParser
 import datetime as DT
 from multiprocessing import Pool
 import time as cpu
+import glob
 
 #=======================================================================================================================
 # Definitions
+
+_unfold_method = "region"   # "region", "phase", "None" --> region works best, but if it fails, try phase
 
 _nthreads = 2
 
@@ -38,7 +41,7 @@ _wget_string   = "wget -c https://noaa-nexrad-level2.s3.amazonaws.com/"
 
 _prep_string   = "prep_nexrad.py --start %s --end %s %s -r %s >& out_prep_%s %s "
 
-_pyRoth_string = "pyROTH.py -d %s -u None -w -o roth_%s >& log_roth_%s"
+_pyRoth_string = "pyROTH.py -d %s -u %s -w -o roth_%s >& log_roth_%s"
 
 _pyDart_string = 'pyDart.py -d roth_%s "%s" --ascii2hdf >& log_dart_%s'
 
@@ -212,29 +215,35 @@ if __name__ == "__main__":
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
 
-# Get file list from Amazon S3 and parse the files to get the correct hours  
+# If we are downloading from AWS, get file list from Amazon S3 and parse the files to get the correct hours  
 
     filelist = []
 
     ctime = start 
+
+    if not options.no_down:
     
-    while ctime < finish:
+        if debug:
+            print("\nGetting file list from AWS\n")
 
-        newfiles = getS3FileList(radar, ctime)
+        while ctime < finish:
 
-        for nf in newfiles:
-            filelist.append(nf)
+            newfiles = getS3FileList(radar, ctime)
+    
+            for nf in newfiles:
+                filelist.append(nf)
 
-        ctime = ctime + _delta_t
+            ctime = ctime + _delta_t
 
 # Download each file and put it into a directory
-
-    if not options.no_down:   # you might have already downloaded the files
 
         c0 = cpu.time()
     
         pool = Pool(processes=options.nthreads)              # set up a queue to run
     
+        if debug:
+            print("\nDownloading files from AWS\n")
+
         for file in filelist:
         
             cmd = "%s%s -P %s" % (_wget_string, file, out_dir)
@@ -251,6 +260,15 @@ if __name__ == "__main__":
     
         print "\nDownload from Amazon took   %f  secs\n" % (round(cpu0, 3))
 
+# If files are downloaded, then get the list of files in the radar directory
+
+    else:
+
+        filelist =  glob.glob("%s/*" % os.path.abspath(out_dir))
+
+        if debug:
+            print("\n Read radar file list from directory \n first: %s  \n last: %s \n" % (filelist[0], filelist[-1]))
+
 # Process the radar files 
 
     c0 = cpu.time()
@@ -259,7 +277,7 @@ if __name__ == "__main__":
 
     if not options.no_anal:     # this might have already been done
 
-        cmd = _pyRoth_string % ( radar, radar, radar )
+        cmd = _pyRoth_string % ( radar, _unfold_method, radar, radar )
         if debug:
             print(cmd)
         os.system(cmd)
