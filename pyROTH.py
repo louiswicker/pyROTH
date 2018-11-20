@@ -53,7 +53,7 @@ debug = True
 _missing = -99999.
 
 # This flag adds an k/j/i index to the DART file, which is the index locations of the gridded data
-_write_grid_indices = False
+_write_grid_indices = True
 
 # True here uses the basemap county database to plot the county outlines.
 _plot_counties = True
@@ -67,10 +67,10 @@ truelat1, truelat2 = 30.0, 60.0
 
 # Parameter dict for Gridding
 _grid_dict = {
-              'grid_spacing_xy' : 3000.,         # meters
+              'grid_spacing_xy' : 5000.,         # meters
               'domain_radius_xy': 150000.,       # meters
               'anal_method'     : 'Cressman',    # options are Cressman, Barnes (1-pass)
-              'ROI'             : 3000.*0.707,   # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
+              'ROI'             : 1000.*0.707,   # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
               'min_count'       : 6,             # regular radar data ~3, high-res radar data ~ 10
               'min_weight'      : 0.2,           # min weight for analysis Cressman ~ 0.3, Barnes ~ 2
               'min_range'       : 10000.,        # min distance away from the radar for valid analysis (meters)

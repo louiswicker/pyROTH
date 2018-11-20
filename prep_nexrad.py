@@ -124,6 +124,7 @@ def getS3FileList(radar, datetime):
         print(" \n getS3FileList string: %s \n" % prefix)
 
     file_list = noaas3.list_objects_v2(Bucket='noaa-nexrad-level2', Delimiter='/', Prefix=prefix)
+    print file_list
 
     for i in file_list['Contents'][:]:
 
