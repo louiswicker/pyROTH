@@ -116,7 +116,6 @@ def parse_NEWSe_radar_file(radar_file_csh, start, finish, no_down=False, no_anal
 
 def getS3FileList(radar, datetime):
 
-
     noaas3 = boto3.client('s3', region_name = _region)
 
     files = []
@@ -127,11 +126,14 @@ def getS3FileList(radar, datetime):
         print(" \n getS3FileList string: %s \n" % prefix)
 
     file_list = noaas3.list_objects_v2(Bucket='noaa-nexrad-level2', Delimiter='/', Prefix=prefix)
+
     print file_list
 
     for i in file_list['Contents'][:]:
 
         if i['Key'][-2::] == 'gz' and i['Key'][-13:-11] == datetime.strftime("%H"):
+            files.append(i['Key'])
+        elif i['Key'][-3::] == 'V06' and i['Key'][-10:-8] == datetime.strftime("%H"):
             files.append(i['Key'])
         else:
             continue
