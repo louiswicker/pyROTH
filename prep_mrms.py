@@ -34,7 +34,7 @@ import scipy.interpolate
 import scipy.ndimage as ndimage
 import scipy.spatial
 from optparse import OptionParser
-from mpl_toolkits.axes_grid1.anchored_artists import AnchoredText
+from matplotlib.offsetbox import AnchoredText
 import netCDF4 as ncdf
 
 from pyproj import Proj
