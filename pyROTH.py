@@ -29,7 +29,8 @@ import scipy.interpolate
 import scipy.ndimage as ndimage
 import scipy.spatial
 from optparse import OptionParser
-from mpl_toolkits.axes_grid1.anchored_artists import AnchoredText
+#from mpl_toolkits.axes_grid1.anchored_artists import AnchoredText
+from matplotlib.offsetbox import AnchoredText
 import netCDF4 as ncdf
 import datetime as DT
 
@@ -67,7 +68,7 @@ truelat1, truelat2 = 30.0, 60.0
 
 # Parameter dict for Gridding
 _grid_dict = {
-              'grid_spacing_xy' : 5000.,         # meters
+              'grid_spacing_xy' : 3000.,         # meters
               'domain_radius_xy': 150000.,       # meters
               'anal_method'     : 'Cressman',    # options are Cressman, Barnes (1-pass)
               'ROI'             : 1000.*0.707,   # Cressman ~ analysis_grid * sqrt(2), Barnes ~ largest data spacing in radar
@@ -96,7 +97,7 @@ _obs_errors = {
 # Parameter dict setting radar data parameters
                
 _radar_parameters = {
-                     'min_dbz_analysis': 10.0, 
+                     'min_dbz_analysis': 20.0, 
                      'max_range': 150000.,
                      'max_Nyquist_factor': 2,    # dont allow output of velocities > Nyquist*factor
                      'field_label_trans': [False, "DBZC", "VR"]  # RaxPol 31 May - must specify for edit sweep files
