@@ -995,14 +995,14 @@ class pyDART():
     
     def get_data(self, variable=None, all=False):
         
-        if self.index == None and all ==False:
+        if len(self.index) > 0 and all ==False:
             if self.verbose: print "pyDART.get_data:  No search indices supplied, returning all rows"
 
 # Open DART PyTables file
         
         h5file, table = open_pyDart_file(self.hdf5, verbose=self.verbose)
         
-        if self.index == None and all == True:
+        if len(self.index) > 0 and all == True:
             self.index = N.arange(table.nrows)
             if self.verbose: print "pyDART.get_data, return all rows of table!"
         
@@ -1046,7 +1046,7 @@ class pyDART():
             if type(variable) == type(1):
                 var_index = variable
             
-            if self.index == None:
+            if len(self.index) > 0:
                 table.get_where_list("kind == var_index")
             
             if len(self.index) != 0:
@@ -1121,7 +1121,7 @@ class pyDART():
             h5file.close()
             return
             
-        if self.index == None:
+        if len(self.index) > 0:
             table.get_where_list("kind == var_index")
         
         if len(self.index) != 0:
@@ -1960,7 +1960,7 @@ class pyDART():
 
 # If there is no search index defined, then create a temporary one to loop through all rows..
         
-        if self.index == None:
+        if len(self.index) > 0:
             self.index = arange(table.nrows)
         
         n = 0
@@ -2055,7 +2055,7 @@ class pyDART():
 
 # If there is no search index defined, then create a temporary one to loop through all rows..
         
-        if self.index == None:
+        if len(self.index) > 0:
             self.index = N.arange(table.nrows)
             
 #select_table = table.copy(self.index)
@@ -2488,7 +2488,7 @@ def main(argv=None):
             myDART.file(filename = options.file)
             myDART.search(variable=options.variable, start = start, end = end, condition=options.condition, loc=loc)
             if options.verbose:
-                if myDART.index != None:
+                if len(myDART.index) > 0:
                     print("\n pyDart: %d Observations found between %s and %s in file %s " % \
                           (len(myDART.index), str(start), str(end), myDART.hdf5))
                 else:
