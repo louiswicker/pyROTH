@@ -697,7 +697,7 @@ class pyDART():
             
             self.index = table.get_where_list(search_string)    # Do the search
 
-            if len(self.index) == 0:  self.index = None
+            if len(self.index) == 0:  self.index = []
             
             if tablereturn != None:
 
