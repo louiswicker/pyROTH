@@ -2055,7 +2055,7 @@ class pyDART():
 
 # If there is no search index defined, then create a temporary one to loop through all rows..
         
-        if len(self.index) > 0:
+        if len(self.index) == 0:
             self.index = N.arange(table.nrows)
             
 #select_table = table.copy(self.index)
